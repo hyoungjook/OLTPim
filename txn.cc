@@ -14,10 +14,15 @@ transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
     masstree_absent_set.set_empty_key(NULL);  // google dense map
     masstree_absent_set.clear();
   }
+#if defined(OLTPIM)
+  pim_write_set.clear();
+#else
   write_set.clear();
+#endif
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
  read_set.clear();
 #endif
+
   xid = TXN::xid_alloc();
   xc = TXN::xid_get_context(xid);
   xc->xct = this;
@@ -114,6 +119,7 @@ void transaction::Abort() {
   }
 #endif
 
+#if !defined(OLTPIM)
   for (uint32_t i = 0; i < write_set.size(); ++i) {
     auto &w = write_set[i];
     dbtuple *tuple = (dbtuple *)w.get_object()->GetPayload();
@@ -135,13 +141,37 @@ void transaction::Abort() {
     ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
     MM::deallocate(entry);
   }
+
+#else // defined(OLTPIM)
+  oltpim::request reqs[ermia::pim::write_set_t::kMaxEntries];
+  args_abort_t args[ermia::pim::write_set_t::kMaxEntries];
+  for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+    auto &w = pim_write_set[i];
+    if (w.entry._ptr != 0) MM::deallocate(w.entry);
+    
+    // abort to pim
+    auto &arg = args[i];
+    arg.xid = xid._val;
+    reqs[i] = oltpim::request(
+      request_type_abort, &arg, nullptr,
+      sizeof(args_abort_t), req_abort_rets_size(&arg)
+    );
+    oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
+  }
+  // TODO remove waiting
+  for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+    while (!oltpim::engine::g_engine.is_done(&reqs[i]));
+  }
+#endif
 }
 
 rc_t transaction::commit() {
   ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE);
   volatile_write(xc->state, TXN::TXN_COMMITTING);
   rc_t ret;
-#if defined(SSN) || defined(SSI)
+#if defined(OLTPIM)
+  ret = oltpim_commit();
+#elif defined(SSN) || defined(SSI)
   // Safe snapshot optimization for read-only transactions:
   // Use the begin ts as cstamp if it's a read-only transaction
   // This is the same for both SSN and SSI.
@@ -175,7 +205,11 @@ rc_t transaction::commit() {
     auto end = xc->end;
     uninitialize();
     if (log && ermia::config::pcommit) {
+#if defined(OLTPIM)
+      end = !end || pim_write_set.size() ? end : end - 1;
+#else
       end = !end || write_set.size() ? end : end - 1;
+#endif
       log->enqueue_committed_xct(end);
     }
   }
@@ -183,7 +217,72 @@ rc_t transaction::commit() {
   return ret;
 }
 
-#if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
+#if defined(OLTPIM)
+rc_t transaction::oltpim_commit() {
+  if (!log && ((flags & TXN_FLAG_READ_ONLY) || pim_write_set.size() == 0)) {
+    volatile_write(xc->state, TXN::TXN_CMMTD);
+    return rc_t{RC_TRUE};
+  }
+
+  ASSERT(log);
+  // Precommit: obtain a CSN
+  xc->end = pim_write_set.size() ? dlog::current_csn.fetch_add(1) : xc->begin;
+
+  dlog::log_block *lb = nullptr;
+  dlog::tlog_lsn lb_lsn = dlog::INVALID_TLOG_LSN;
+  uint64_t segnum = -1;
+  // Generate a log block if not read-only
+  if (pim_write_set.size()) {
+    lb = log->allocate_log_block(log_size, &lb_lsn, &segnum, xc->end);
+  }
+
+  // Post-commit
+  oltpim::request reqs[ermia::pim::write_set_t::kMaxEntries];
+  args_commit_t args[ermia::pim::write_set_t::kMaxEntries];
+  for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+    auto &w = pim_write_set[i];
+    dbtuple fake_tuple(0);
+    dbtuple *tuple = (w.entry._ptr != 0) ? (dbtuple*)(w.get_object()->GetPayload()) : &fake_tuple;
+    uint32_t off = lb->payload_size;
+
+    // hack: pack index_id and pim_id to fid
+    const uint32_t fid = (w.index_id << 16) | (w.pim_id);
+    if (w.is_insert) {
+      auto ret_off = dlog::log_insert(lb, fid, w.oid, (char *)tuple, w.size);
+      ALWAYS_ASSERT(ret_off == off);
+    }
+    else {
+      auto ret_off = dlog::log_update(lb, fid, w.oid, (char *)tuple, w.size);
+      ALWAYS_ASSERT(ret_off == off);
+    }
+    ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
+
+    // commit to pim
+    auto &arg = args[i];
+    arg.xid = xid._val;
+    arg.csn = xc->end;
+    reqs[i] = oltpim::request(
+      request_type_commit, &arg, nullptr,
+      sizeof(args_commit_t), req_commit_rets_size(&arg)
+    );
+    oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
+  }
+  ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
+
+  // TODO remove waiting
+  for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+    while (!oltpim::engine::g_engine.is_done(&reqs[i]));
+  }
+  
+  // NOTE: make sure this happens after populating log block,
+  // otherwise readers will see inconsistent data!
+  // This is when (committed) tuple data are made visible to readers
+  volatile_write(xc->state, TXN::TXN_CMMTD);
+  return rc_t{RC_TRUE};
+}
+#endif
+
+#if !defined(OLTPIM) && !defined(SSI) && !defined(SSN) && !defined(MVOCC)
 rc_t transaction::si_commit() {
   if (!log && ((flags & TXN_FLAG_READ_ONLY) || write_set.size() == 0)) {
     volatile_write(xc->state, TXN::TXN_CMMTD);

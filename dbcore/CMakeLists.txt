@@ -25,6 +25,7 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-coroutine.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-exceptions.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-table.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/sm-thread.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-object.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid-alloc.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid.cpp

@@ -62,18 +62,22 @@ endif()
 include_directories(dbcore)
 include_directories(masstree)
 include_directories(third-party/sparsehash/src)
+include_directories(oltpim-engine/include)
+include_directories(oltpim-engine/include/host)
 
 add_subdirectory(benchmarks)
 add_subdirectory(benchmarks/ycsb)
 add_subdirectory(benchmarks/tpcc)
 add_subdirectory(dbcore)
 add_subdirectory(masstree)
+add_subdirectory(oltpim-engine)
 
 set_property(GLOBAL APPEND PROPERTY ALL_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/engine.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/corobase.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/corobase-task.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/corobase-flat.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/oltpim.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/tuple.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/txn.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/txn-ssn.cc
@@ -83,17 +87,8 @@ set_property(GLOBAL APPEND PROPERTY ALL_SRC
 
 get_property(LIB_SRC GLOBAL PROPERTY ALL_SRC)
 
-# Thread pool source
-set_property(GLOBAL APPEND PROPERTY THREAD_POOL_SRC
-  ${CMAKE_CURRENT_SOURCE_DIR}/dbcore/sm-thread.cpp
-)
-get_property(THREAD_POOL_SRC GLOBAL PROPERTY THREAD_POOL_SRC)
-
-# Thread pool library
-add_library(thread_pool SHARED ${THREAD_POOL_SRC})
-
 # SI
-add_library(corobase_si SHARED ${LIB_SRC})
+add_library(corobase_si STATIC ${LIB_SRC})
 set_target_properties(corobase_si PROPERTIES COMPILE_FLAGS "")
 #set_target_properties(corobase_si PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DGROUP_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
 
@@ -103,7 +98,7 @@ set_target_properties(corobase_si PROPERTIES COMPILE_FLAGS "")
 #target_link_libraries(corobase_SI corobase_si thread_pool)
 
 # SI with fully nested coroutine
-add_library(corobase_nested_coro_si SHARED ${LIB_SRC})
+add_library(corobase_nested_coro_si STATIC ${LIB_SRC})
 set_target_properties(corobase_nested_coro_si PROPERTIES COMPILE_FLAGS "-DNESTED_COROUTINE")
 
 #add_executable(corobase_nested_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
@@ -111,12 +106,17 @@ set_target_properties(corobase_nested_coro_si PROPERTIES COMPILE_FLAGS "-DNESTED
 #target_link_libraries(corobase_nested_coro_SI corobase_nested_coro_si thread_pool)
 
 # SI with hybrid coroutine
-add_library(corobase_hybrid_coro_si SHARED ${LIB_SRC})
+add_library(corobase_hybrid_coro_si STATIC ${LIB_SRC})
 set_target_properties(corobase_hybrid_coro_si PROPERTIES COMPILE_FLAGS "")
 
 # SI with flat coroutine
-add_library(corobase_flat_coro_si SHARED ${LIB_SRC})
+add_library(corobase_flat_coro_si STATIC ${LIB_SRC})
 set_target_properties(corobase_flat_coro_si PROPERTIES COMPILE_FLAGS "")
+
+# SI with oltpim
+add_library(corobase_oltpim_si STATIC ${LIB_SRC})
+set_target_properties(corobase_oltpim_si PROPERTIES COMPILE_FLAGS "-DOLTPIM")
+target_link_libraries(corobase_oltpim_si oltpim)
 
 # Thread pool library with SSN enabled
 #add_library(thread_pool_ssn SHARED ${THREAD_POOL_SRC})

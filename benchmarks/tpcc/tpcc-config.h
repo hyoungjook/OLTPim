@@ -1424,6 +1424,24 @@ class tpcc_bench_runner : public bench_runner {
     RegisterIndex(db, "region",     "region",           true);
     RegisterIndex(db, "supplier",   "supplier",         true);
     RegisterIndex(db, "warehouse",  "warehouse",        true);
+#if defined(OLTPIM)
+    ermia::pim::set_index_partition_interval("customer", 1);
+    ermia::pim::set_index_partition_interval("customer_name_idx", 1);
+    ermia::pim::set_index_partition_interval("district", 1);
+    ermia::pim::set_index_partition_interval("history", 1);
+    ermia::pim::set_index_partition_interval("item", 1);
+    ermia::pim::set_index_partition_interval("new_order", 1);
+    ermia::pim::set_index_partition_interval("oorder", 1);
+    ermia::pim::set_index_partition_interval("oorder_c_id_idx", 1);
+    ermia::pim::set_index_partition_interval("order_line", 1);
+    ermia::pim::set_index_partition_interval("stock", 1);
+    ermia::pim::set_index_partition_interval("stock_data", 1);
+    ermia::pim::set_index_partition_interval("nation", 1);
+    ermia::pim::set_index_partition_interval("region", 1);
+    ermia::pim::set_index_partition_interval("supplier", 1);
+    ermia::pim::set_index_partition_interval("warehouse", 1);
+    ermia::pim::finalize_index_setup();
+#endif
   }
 
   virtual void prepare(char *) {

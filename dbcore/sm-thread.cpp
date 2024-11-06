@@ -3,6 +3,10 @@
 #include "sm-alloc.h"
 #include "sm-thread.h"
 
+#if defined(OLTPIM)
+#include "engine.hpp"
+#endif
+
 namespace ermia {
 namespace thread {
 
@@ -101,12 +105,8 @@ Thread::Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
       is_physical(is_physical) {
   int rc = pthread_attr_init (&thd_attr);
   pthread_create(&thd, &thd_attr, &Thread::StaticIdleTask, (void *)this);
-  cpu_set_t cpuset;
-  CPU_ZERO(&cpuset);
-  CPU_SET(sys_cpu, &cpuset);
-  rc = pthread_setaffinity_np(thd, sizeof(cpu_set_t), &cpuset);
-  LOG(INFO) << "Binding thread " << core << " on node " << node << " to CPU " << sys_cpu;
   ALWAYS_ASSERT(rc == 0);
+  LOG(INFO) << "Binding thread " << core << " on node " << node << " to CPU " << sys_cpu;
 }
 
 PerNodeThreadPool::PerNodeThreadPool(uint16_t n) : node(n), bitmap(0UL) {
@@ -151,6 +151,18 @@ void Initialize() {
 }
 
 void Thread::IdleTask() {
+  if (config::threadpool) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(sys_cpu, &cpuset);
+    int rc = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+    ALWAYS_ASSERT(rc == 0);
+  }
+#if defined(OLTPIM)
+  ALWAYS_ASSERT(config::threadpool);
+  oltpim::engine::g_engine.register_worker_thread(sys_cpu);
+#endif
+
   std::unique_lock<std::mutex> lock(trigger_lock);
 
 #if defined(SSN) || defined(SSI)

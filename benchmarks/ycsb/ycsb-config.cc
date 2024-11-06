@@ -96,7 +96,10 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
     new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
     *(char *)v.p = 'a';
 
-#if defined(NESTED_COROUTINE)
+#if defined(OLTPIM)
+      uint64_t pim_key = hot_start_key + i;
+      TryVerifyStrict(sync_wait_oltpim_coro(((ermia::ConcurrentMasstreeIndex*)tbl)->pim_InsertRecord(txn, pim_key, v)));
+#elif defined(NESTED_COROUTINE)
       TryVerifyStrict(sync_wait_coro(tbl->InsertRecord(txn, k, v)));
 #else
       TryVerifyStrict(tbl->InsertRecord(txn, k, v));
@@ -153,7 +156,10 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
     ermia::varstr &k = str(sizeof(ycsb_kv::key));
     BuildKey(hot_start_key + i, k);
     ermia::varstr &v = str(0);
-#if defined(NESTED_COROUTINE)
+#if defined(OLTPIM)
+    uint64_t pim_key = hot_start_key + i;
+    rc = sync_wait_oltpim_coro(((ermia::ConcurrentMasstreeIndex*)tbl)->pim_GetRecord(txn, pim_key, v));
+#elif defined(NESTED_COROUTINE)
     sync_wait_coro(tbl->GetRecord(txn, rc, k, v));
 #else
     tbl->GetRecord(txn, rc, k, v);

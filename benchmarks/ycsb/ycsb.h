@@ -11,6 +11,10 @@
 #include "../record/inline_str.h"
 #include "../../macros.h"
 
+#if defined(OLTPIM)
+#include "../../oltpim.h"
+#endif
+
 extern bool g_hot_table_zipfian;
 extern const int g_scan_min_length;
 extern int g_scan_length_zipfain_rng;
@@ -109,6 +113,10 @@ class ycsb_bench_runner : public bench_runner {
  public:
   ycsb_bench_runner(ermia::Engine *db) : bench_runner(db) {
     ycsb_create_db(db);
+#if defined(OLTPIM)
+    ermia::pim::set_index_partition_interval("USERTABLE", 1);
+    ermia::pim::finalize_index_setup();
+#endif
   }
 
   virtual void prepare(char *) {

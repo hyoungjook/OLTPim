@@ -19,6 +19,11 @@ using std::suspend_always;
 using std::suspend_never;
 #endif
 
+#if defined(OLTPIM)
+#include "oltpim.h"
+#include "engine.hpp"
+#endif
+
 namespace ermia {
 
 extern bool is_loading;
@@ -151,7 +156,15 @@ private:
 
 public:
   ConcurrentMasstreeIndex(const char *table_name, bool primary)
-    : OrderedIndex(table_name, primary) {}
+    : OrderedIndex(table_name, primary) {
+#if defined(OLTPIM)
+      assign_index_id();
+      oltpim::engine::g_engine.add_index(index_info{
+        .primary = primary
+      });
+      ermia::pim::register_index(this);
+#endif
+    }
 
   ConcurrentMasstree &GetMasstree() { return masstree_; }
 
@@ -194,6 +207,17 @@ public:
   ermia::coro::task<rc_t> task_Scan(transaction *t, const varstr &start_key, const varstr *end_key,
                               ScanCallback &callback, uint32_t max_keys = ~uint32_t{0});
 
+#if defined(OLTPIM)
+  inline void set_key_interval(uint64_t interval) {key_partition_interval = interval;}
+  inline void set_num_pims(uint32_t num_pims_) {num_pims = num_pims_;}
+  ermia::coro::task<rc_t> pim_GetRecord(transaction *t, const uint64_t &key, varstr &value);
+  ermia::coro::task<rc_t> pim_InsertRecord(transaction *t, const uint64_t &key, varstr &value);
+  ermia::coro::task<rc_t> pim_UpdateRecord(transaction *t, const uint64_t &key, varstr &value);
+  ermia::coro::task<rc_t> pim_RemoveRecord(transaction *t, const uint64_t &key);
+  ermia::coro::task<rc_t> pim_Scan(transaction *t, const uint64_t &start_key, const uint64_t *end_key,
+                              ScanCallback &callback, uint32_t max_keys);
+#endif
+
   PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   PROMISE(rc_t) UpdateRecord(transaction *t, const varstr &key, varstr &value) override;
   PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
@@ -219,5 +243,12 @@ public:
 
 private:
   PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
+#if defined(OLTPIM)
+  int index_id;
+  uint64_t key_partition_interval;
+  uint32_t num_pims;
+  void assign_index_id();
+  inline int pim_id_of(const uint64_t &key) {return (int)((key / key_partition_interval) % num_pims);}
+#endif
 };
 } // namespace ermia

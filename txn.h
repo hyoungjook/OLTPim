@@ -21,6 +21,10 @@
 #include <sparsehash/dense_hash_map>
 using google::dense_hash_map;
 
+#if defined(OLTPIM)
+#include "oltpim.h"
+#endif
+
 namespace ermia {
 
 
@@ -112,7 +116,9 @@ protected:
   void uninitialize();
 
   rc_t commit();
-#ifdef SSN
+#if defined OLTPIM
+  rc_t oltpim_commit();
+#elif defined SSN
   rc_t parallel_ssn_commit();
   rc_t ssn_read(dbtuple *tuple);
 #elif defined SSI
@@ -172,6 +178,18 @@ public:
     write_set.emplace_back(entry, fid, oid, size + sizeof(dbtuple), insert, cold);
   }
 
+#if defined(OLTPIM)
+  inline void add_to_pim_write_set(fat_ptr entry, uint32_t index_id, uint32_t pim_id, uint32_t oid, uint64_t size, bool insert) {
+    // Work out the encoded size to be added to the log block later
+    auto logrec_size = align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
+    log_size += logrec_size;
+    // Each write set entry still just records the size of the actual "data" to
+    // be inserted to the log excluding dlog::log_record, which will be
+    // prepended by log_insert/update etc.
+    pim_write_set.emplace_back(entry, index_id, pim_id, oid, size + sizeof(dbtuple), insert);
+  }
+#endif
+
   inline TXN::xid_context *GetXIDContext() { return xc; }
 
   inline void set_cold(bool _is_disk) { is_disk = _is_disk; }
@@ -227,6 +245,9 @@ public:
   uint32_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
+#if defined(OLTPIM)
+  ermia::pim::write_set_t pim_write_set;
+#endif
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;
