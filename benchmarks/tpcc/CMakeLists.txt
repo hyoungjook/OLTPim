@@ -18,3 +18,8 @@ add_executable(tpcc_SI_hybrid_coro ${CMAKE_CURRENT_SOURCE_DIR}/tpcc-hybrid-coro.
 set_target_properties(tpcc_SI_hybrid_coro PROPERTIES COMPILE_FLAGS "")
 #set_target_properties(corobase_SI PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
 target_link_libraries(tpcc_SI_hybrid_coro corobase_hybrid_coro_si)
+
+add_executable(tpcc_SI_oltpim ${CMAKE_CURRENT_SOURCE_DIR}/tpcc-oltpim.cc)
+set_target_properties(tpcc_SI_oltpim PROPERTIES COMPILE_FLAGS "-DOLTPIM")
+#set_target_properties(corobase_SI PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
+target_link_libraries(tpcc_SI_oltpim corobase_oltpim_si)

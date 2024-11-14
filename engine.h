@@ -209,13 +209,27 @@ public:
 
 #if defined(OLTPIM)
   inline void set_key_interval(uint64_t interval) {key_partition_interval = interval;}
-  inline void set_num_pims(uint32_t num_pims_) {num_pims = num_pims_;}
+  inline void set_num_pims(uint32_t num_pims_, uint32_t rand_offset_) {
+    num_pims = num_pims_;
+    key_partition_offset = (uint64_t)rand_offset_;
+  }
   ermia::coro::task<rc_t> pim_GetRecord(transaction *t, const uint64_t &key, varstr &value);
-  ermia::coro::task<rc_t> pim_InsertRecord(transaction *t, const uint64_t &key, varstr &value);
+  ermia::coro::task<rc_t> pim_InsertRecord(transaction *t, const uint64_t &key, varstr &value, uint64_t *oid = nullptr);
   ermia::coro::task<rc_t> pim_UpdateRecord(transaction *t, const uint64_t &key, varstr &value);
   ermia::coro::task<rc_t> pim_RemoveRecord(transaction *t, const uint64_t &key);
-  ermia::coro::task<rc_t> pim_Scan(transaction *t, const uint64_t &start_key, const uint64_t *end_key,
-                              ScanCallback &callback, uint32_t max_keys);
+  ermia::coro::task<rc_t> pim_Scan(transaction *t, const uint64_t &start_key, const uint64_t &end_key,
+                              pim::PIMScanCallback &callback, uint32_t max_keys_per_interval);
+  ermia::coro::task<rc_t> pim_InsertOID(transaction *t, const uint64_t &key, uint64_t oid);
+
+  // multi-get style interface
+  // the user should allocate arg, ret, req of proper type
+  void pim_InsertRecordBegin(transaction *t, const uint64_t &key, varstr &value,
+                             void *arg, void *ret, void *req, uint16_t *pim_id);
+  ermia::coro::task<rc_t> pim_InsertRecordEnd(transaction *t, void *req, uint16_t pim_id, uint64_t *oid = nullptr);
+  void pim_InsertOIDBegin(transaction *t, const uint64_t &key, uint64_t oid,
+                          void *arg, void *ret, void *req);
+  ermia::coro::task<rc_t> pim_InsertOIDEnd(transaction *t, void *req);
+
 #endif
 
   PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
@@ -245,10 +259,12 @@ private:
   PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 #if defined(OLTPIM)
   int index_id;
-  uint64_t key_partition_interval;
+  uint64_t key_partition_interval, key_partition_offset;
   uint32_t num_pims;
   void assign_index_id();
-  inline int pim_id_of(const uint64_t &key) {return (int)((key / key_partition_interval) % num_pims);}
+  inline int pim_id_of(const uint64_t &key) {
+    return (int)((key_partition_offset + (key / key_partition_interval)) % num_pims);
+  }
 #endif
 };
 } // namespace ermia

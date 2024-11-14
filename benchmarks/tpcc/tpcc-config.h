@@ -4,10 +4,14 @@
 #include <string>
 #include <ctype.h>
 #include <unistd.h>
+#include <algorithm>
 
 #include "../bench.h"
 #include "../dbtest.h"
 #include "tpcc.h"
+#if defined(OLTPIM)
+#include "tpcc-key64.h"
+#endif
 
 // configuration flags
 // XXX(shiges): For compatibility issues, we keep gflags configs and the old
@@ -520,7 +524,10 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       const size_t sz = Size(v);
       warehouse_total_sz += sz;
       n_warehouses++;
-#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
+#if defined(OLTPIM)
+      uint64_t pk = tpcc_key64::warehouse(k);
+      TryVerifyStrict(sync_wait_oltpim_coro(tbl_warehouse(i)->pim_InsertRecord(txn, pk, Encode(str(sz), v))));
+#elif defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
       TryVerifyStrict(sync_wait_coro(tbl_warehouse(i)->InsertRecord(txn, Encode(str(Size(k)), k),
                                                  Encode(str(sz), v))));
 #else
@@ -539,7 +546,12 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       ermia::varstr warehouse_v;
 
       rc_t rc = rc_t{RC_INVALID};
+#if defined(OLTPIM)
+      uint64_t pk = tpcc_key64::warehouse(k);
+      rc = sync_wait_oltpim_coro(tbl_warehouse(i)->pim_GetRecord(txn, pk, warehouse_v));
+#else
       tbl_warehouse(i)->GetRecord(txn, rc, Encode(str(Size(k)), k), warehouse_v);
+#endif
       TryVerifyStrict(rc);
 
       const warehouse::value *v = Decode(warehouse_v, warehouse_temp);
@@ -574,52 +586,69 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
   virtual void load() {
     std::string obj_buf;
     uint64_t total_sz = 0;
-    for (uint i = 1; i <= NumItems(); i++) {
+    constexpr uint batchsize = 32;
+    for (uint i_begin = 1; i_begin <= NumItems(); i_begin += batchsize) {
       arena->reset();
       ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-      // items don't "belong" to a certain warehouse, so no pinning
-      const item::key k(i);
+      const uint num = std::min<uint>(batchsize, NumItems() - i_begin + 1);
+#if defined(OLTPIM)
+      uint16_t pim_ids[batchsize];
+      args_insert_t args[batchsize];
+      rets_insert_t rets[batchsize];
+      oltpim::request reqs[batchsize];
+#endif
+      for (uint j = 0; j < num; ++j) {
+        const item::key k(i_begin + j);
 
-      item::value v;
-      const std::string i_name = RandomStr(r, RandomNumber(r, 14, 24));
-      v.i_name.assign(i_name);
-      v.i_price = (float)RandomNumber(r, 100, 10000) / 100.0;
-      const int len = RandomNumber(r, 26, 50);
-      if (RandomNumber(r, 1, 100) > 10) {
-        const std::string i_data = RandomStr(r, len);
-        v.i_data.assign(i_data);
-      } else {
-        const int startOriginal = RandomNumber(r, 2, (len - 8));
-        const std::string i_data = RandomStr(r, startOriginal + 1) + "ORIGINAL" +
-                              RandomStr(r, len - startOriginal - 7);
-        v.i_data.assign(i_data);
-      }
-      v.i_im_id = RandomNumber(r, 1, 10000);
+        item::value v;
+        const std::string i_name = RandomStr(r, RandomNumber(r, 14, 24));
+        v.i_name.assign(i_name);
+        v.i_price = (float)RandomNumber(r, 100, 10000) / 100.0;
+        const int len = RandomNumber(r, 26, 50);
+        if (RandomNumber(r, 1, 100) > 10) {
+          const std::string i_data = RandomStr(r, len);
+          v.i_data.assign(i_data);
+        } else {
+          const int startOriginal = RandomNumber(r, 2, (len - 8));
+          const std::string i_data = RandomStr(r, startOriginal + 1) + "ORIGINAL" +
+                                RandomStr(r, len - startOriginal - 7);
+          v.i_data.assign(i_data);
+        }
+        v.i_im_id = RandomNumber(r, 1, 10000);
 
 #ifndef NDEBUG
-      checker::SanityCheckItem(&k, &v);
+        checker::SanityCheckItem(&k, &v);
 #endif
-      const size_t sz = Size(v);
-      total_sz += sz;
-      if (i * 100 <= NumItems() * (100 - FLAGS_tpcc_cold_item_pct)) {
-#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
-        TryVerifyStrict(sync_wait_coro(tbl_item(1)->InsertRecord(
-            txn, Encode(str(Size(k)), k),
-            Encode(str(sz), v))));  // this table is shared, so any partition is OK
+        const size_t sz = Size(v);
+        total_sz += sz;
+#if defined(OLTPIM)
+        const uint64_t pk = tpcc_key64::item(k);
+        tbl_item(1)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &args[j], &rets[j], &reqs[j], &pim_ids[j]);
+      }
+      for (uint j = 0; j < num; ++j) {
+        TryVerifyStrict(sync_wait_oltpim_coro(tbl_item(1)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j])));
 #else
-        TryVerifyStrict(tbl_item(1)->InsertRecord(
-            txn, Encode(str(Size(k)), k),
-            Encode(str(sz), v)));  // this table is shared, so any partition is OK
+        if ((i_begin + j) * 100 <= NumItems() * (100 - FLAGS_tpcc_cold_item_pct)) {
+#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
+          TryVerifyStrict(sync_wait_coro(tbl_item(1)->InsertRecord(
+              txn, Encode(str(Size(k)), k),
+              Encode(str(sz), v))));  // this table is shared, so any partition is OK
+#else
+          TryVerifyStrict(tbl_item(1)->InsertRecord(
+              txn, Encode(str(Size(k)), k),
+              Encode(str(sz), v)));  // this table is shared, so any partition is OK
 #endif
-      } else {
+        } else {
 #if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
-        TryVerifyStrict(sync_wait_coro(tbl_item(1)->InsertColdRecord(
-            txn, Encode(str(Size(k)), k),
-            Encode(str(sz), v))));  // this table is shared, so any partition is OK
+          TryVerifyStrict(sync_wait_coro(tbl_item(1)->InsertColdRecord(
+              txn, Encode(str(Size(k)), k),
+              Encode(str(sz), v))));  // this table is shared, so any partition is OK
 #else
-        TryVerifyStrict(tbl_item(1)->InsertColdRecord(
-            txn, Encode(str(Size(k)), k),
-            Encode(str(sz), v)));  // this table is shared, so any partition is OK
+          TryVerifyStrict(tbl_item(1)->InsertColdRecord(
+              txn, Encode(str(Size(k)), k),
+              Encode(str(sz), v)));  // this table is shared, so any partition is OK
+#endif
+        }
 #endif
       }
       TryVerifyStrict(db->Commit(txn));
@@ -657,15 +686,20 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
                                             : static_cast<uint>(warehouse_id);
 
     for (uint w = w_start; w <= w_end; w++) {
-      const size_t batchsize = 10;
-      for (size_t i = 0; i < NumItems();) {
-        size_t iend = std::min(i + batchsize, NumItems());
-        ermia::scoped_str_arena s_arena(*arena);
-        for (uint j = i + 1; j <= iend; j++) {
-          arena->reset();
-          ermia::transaction *const txn = db->NewTransaction(0, *arena, txn_buf());
-          const stock::key k(w, j);
-          const stock_data::key k_data(w, j);
+      constexpr uint batchsize = 32;
+      for (uint i_begin = 1; i_begin <= NumItems(); i_begin += batchsize) {
+        arena->reset();
+        ermia::transaction *const txn = db->NewTransaction(0, *arena, txn_buf());
+        const uint num = std::min<uint>(batchsize, NumItems() - i_begin + 1);
+#if defined(OLTPIM)
+        uint16_t pim_ids[2 * batchsize];
+        args_insert_t args[2 * batchsize];
+        rets_insert_t rets[2 * batchsize];
+        oltpim::request reqs[2 * batchsize];
+#endif
+        for (uint j = 0; j < num; ++j) {
+          const stock::key k(w, i_begin + j);
+          const stock_data::key k_data(w, i_begin + j);
 
           stock::value v;
           v.s_quantity = RandomNumber(r, 10, 100);
@@ -701,7 +735,16 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
           const size_t sz = Size(v);
           stock_total_sz += sz;
           n_stocks++;
-#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
+#if defined(OLTPIM)
+          const uint64_t pk = tpcc_key64::stock(k);
+          tbl_stock(w)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &args[j], &rets[j], &reqs[j], &pim_ids[j]);
+          tbl_stock_data(w)->pim_InsertRecordBegin(txn, pk, Encode(str(Size(v_data)), v_data),
+            &args[batchsize + j], &rets[batchsize + j], &reqs[batchsize + j], &pim_ids[batchsize + j]);
+        }
+        for (uint j = 0; j < num; ++j) {
+          TryVerifyStrict(sync_wait_oltpim_coro(tbl_stock(w)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j])));
+          TryVerifyStrict(sync_wait_oltpim_coro(tbl_stock_data(w)->pim_InsertRecordEnd(txn, &reqs[batchsize + j], pim_ids[batchsize + j])));
+#elif defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
           TryVerifyStrict(sync_wait_coro(tbl_stock(w)->InsertRecord(txn, Encode(str(Size(k)), k),
                                                  Encode(str(sz), v))));
           TryVerifyStrict(
@@ -714,11 +757,8 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
               tbl_stock_data(w)->InsertRecord(txn, Encode(str(Size(k_data)), k_data),
                                         Encode(str(Size(v_data)), v_data)));
 #endif
-          TryVerifyStrict(db->Commit(txn));
         }
-
-        // loop update
-        i = iend;
+        TryVerifyStrict(db->Commit(txn));
       }
     }
     if (warehouse_id == -1) {
@@ -773,7 +813,10 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
         const size_t sz = Size(v);
         district_total_sz += sz;
         n_districts++;
-#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
+#if defined(OLTPIM)
+        uint64_t pk = tpcc_key64::district(k);
+        TryVerifyStrict(sync_wait_oltpim_coro(tbl_district(w)->pim_InsertRecord(txn, pk, Encode(str(sz), v))));
+#elif defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
         TryVerifyStrict(sync_wait_coro(tbl_district(w)->InsertRecord(txn, Encode(str(Size(k)), k),
                                                   Encode(str(sz), v))));
 #else
@@ -814,24 +857,24 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
         (warehouse_id == -1) ? 1 : static_cast<uint>(warehouse_id);
     const uint w_end = (warehouse_id == -1) ? NumWarehouses()
                                             : static_cast<uint>(warehouse_id);
-    const size_t batchsize = 100;
-    const size_t nbatches = (batchsize > NumCustomersPerDistrict())
-                                ? 1
-                                : (NumCustomersPerDistrict() / batchsize);
-
+    constexpr size_t batchsize = 32;
     uint64_t total_sz = 0;
 
     for (uint w = w_start; w <= w_end; w++) {
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
-        for (uint batch = 0; batch < nbatches;) {
-          const size_t cstart = batch * batchsize;
-          const size_t cend =
-              std::min((batch + 1) * batchsize, NumCustomersPerDistrict());
-          for (uint cidx0 = cstart; cidx0 < cend; cidx0++) {
-            ermia::scoped_str_arena s_arena(arena);
-            arena->reset();
-            ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-            const uint c = cidx0 + 1;
+        for (uint c_begin = 1; c_begin <= NumCustomersPerDistrict(); c_begin += batchsize) {
+          const uint num = std::min(batchsize, NumCustomersPerDistrict() - c_begin + 1);
+          arena->reset();
+          ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+#if defined(OLTPIM)
+          uint64_t pk_idx[batchsize];
+          uint16_t pim_ids[batchsize];
+          args_insert_t args[batchsize];
+          rets_insert_t rets[batchsize];
+          oltpim::request reqs[batchsize];
+#endif
+          for (uint j = 0; j < num; ++j) {
+            const uint c = c_begin + j;
             const customer::key k(w, d, c);
 
             customer::value v;
@@ -871,8 +914,29 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 #endif
             const size_t sz = Size(v);
             total_sz += sz;
+
+            // customer name index
+            const customer_name_idx::key k_idx(
+                k.c_w_id, k.c_d_id, v.c_last.str(true), v.c_first.str(true));
+            
+            // index structure is:
+            // (c_w_id, c_d_id, c_last, c_first) -> OID
+
+#if defined(OLTPIM)
+            const uint64_t pk = tpcc_key64::customer(k);
+            tbl_customer(w)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &args[j], &rets[j], &reqs[j], &pim_ids[j]);
+            pk_idx[j] = tpcc_key64::customer_name_idx(k_idx);
+          }
+          for (uint j = 0; j < num; ++j) {
+            uint64_t c_oid = 0;
+            TryVerifyStrict(sync_wait_oltpim_coro(tbl_customer(w)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j], &c_oid)));
+            tbl_customer_name_idx(w)->pim_InsertOIDBegin(txn, pk_idx[j], c_oid, &args[j], &rets[j], &reqs[j]);
+          }
+          for (uint j = 0; j < num; ++j) {
+            TryVerifyStrict(sync_wait_oltpim_coro(tbl_customer_name_idx(w)->pim_InsertOIDEnd(txn, &reqs[j])));
+#else
             ermia::OID c_oid = 0;  // Get the OID and put in customer_name_idx later
-            if ((cidx0 - cstart) * 100 / (cend - cstart) <= (100 - FLAGS_tpcc_cold_customer_pct)) {
+            if (j * 100 / num <= (100 - FLAGS_tpcc_cold_customer_pct)) {
 #if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
               TryVerifyStrict(sync_wait_coro(tbl_customer(w)->InsertRecord(
                   txn, Encode(str(Size(k)), k), Encode(str(sz), v), &c_oid)));
@@ -889,17 +953,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
                   txn, Encode(str(Size(k)), k), Encode(str(sz), v), &c_oid));
 #endif
             }
-            TryVerifyStrict(db->Commit(txn));
 
-            // customer name index
-            const customer_name_idx::key k_idx(
-                k.c_w_id, k.c_d_id, v.c_last.str(true), v.c_first.str(true));
-
-            // index structure is:
-            // (c_w_id, c_d_id, c_last, c_first) -> OID
-
-            arena->reset();
-            txn = db->NewTransaction(0, *arena, txn_buf());
 #if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
             TryVerifyStrict(sync_wait_coro(tbl_customer_name_idx(w)->InsertOID(
                 txn, Encode(str(Size(k_idx)), k_idx), c_oid)));
@@ -907,9 +961,14 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             TryVerifyStrict(tbl_customer_name_idx(w)->InsertOID(
                 txn, Encode(str(Size(k_idx)), k_idx), c_oid));
 #endif
-            TryVerifyStrict(db->Commit(txn));
-            arena->reset();
+#endif // !defined(OLTPIM)
+          }
+          TryVerifyStrict(db->Commit(txn));
 
+          arena->reset();
+          txn = db->NewTransaction(0, *arena, txn_buf());
+          for (uint j = 0; j < num; ++j) {
+            const uint c = c_begin + j;
             history::key k_hist;
             k_hist.h_c_id = c;
             k_hist.h_c_d_id = d;
@@ -922,8 +981,13 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             v_hist.h_amount = 10;
             v_hist.h_data.assign(RandomStr(r, RandomNumber(r, 10, 24)));
 
-            arena->reset();
-            txn = db->NewTransaction(0, *arena, txn_buf());
+#if defined(OLTPIM)
+            const uint64_t pk_hist = tpcc_key64::history(k_hist);
+            tbl_history(w)->pim_InsertRecordBegin(txn, pk_hist, Encode(str(Size(v_hist)), v_hist), &args[j], &rets[j], &reqs[j], &pim_ids[j]);
+          }
+          for (uint j = 0; j < num; ++j) {
+            TryVerifyStrict(sync_wait_oltpim_coro(tbl_history(w)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j])));
+#else
 #if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
             TryVerifyStrict(
                 sync_wait_coro(tbl_history(w)->InsertRecord(txn, Encode(str(Size(k_hist)), k_hist),
@@ -933,9 +997,9 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
                 tbl_history(w)->InsertRecord(txn, Encode(str(Size(k_hist)), k_hist),
                                        Encode(str(Size(v_hist)), v_hist)));
 #endif
-            TryVerifyStrict(db->Commit(txn));
+#endif // !defined(OLTPIM)
           }
-          batch++;
+          TryVerifyStrict(db->Commit(txn));
         }
       }
     }
@@ -986,6 +1050,9 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
         (warehouse_id == -1) ? 1 : static_cast<uint>(warehouse_id);
     const uint w_end = (warehouse_id == -1) ? NumWarehouses()
                                             : static_cast<uint>(warehouse_id);
+    constexpr size_t batchsize = 15 * 3;
+    static_assert(batchsize % 15 == 0); // to reuse buffers for order_line insertion
+    constexpr size_t ol_batchsize = batchsize / 15;
 
     for (uint w = w_start; w <= w_end; w++) {
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
@@ -997,112 +1064,188 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
           c_ids_s.insert(x);
           c_ids.emplace_back(x);
         }
-        for (uint c = 1; c <= NumCustomersPerDistrict();) {
-          ermia::scoped_str_arena s_arena(arena);
+        for (uint c_begin = 1; c_begin <= NumCustomersPerDistrict(); c_begin += batchsize) {
+          printf("o %u %u %u\n", w, d, c_begin);
+          const size_t num = std::min(batchsize, NumCustomersPerDistrict() - c_begin + 1);
           arena->reset();
           ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-          const oorder::key k_oo(w, d, c);
-
-          oorder::value v_oo;
-          v_oo.o_c_id = c_ids[c - 1];
-          if (k_oo.o_id < 2101)
-            v_oo.o_carrier_id = RandomNumber(r, 1, 10);
-          else
-            v_oo.o_carrier_id = 0;
-          v_oo.o_ol_cnt = NumOrderLinesPerCustomer();
-          v_oo.o_all_local = 1;
-          v_oo.o_entry_d = GetCurrentTimeMillis();
-
-#ifndef NDEBUG
-          checker::SanityCheckOOrder(&k_oo, &v_oo);
+#if defined(OLTPIM)
+          uint16_t pim_ids[batchsize];
+          args_insert_t args[batchsize];
+          rets_insert_t rets[batchsize];
+          oltpim::request reqs[batchsize];
 #endif
-          const size_t sz = Size(v_oo);
-          oorder_total_sz += sz;
-          n_oorders++;
-          ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
-#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
-          TryVerifyStrict(
-              sync_wait_coro(tbl_oorder(w)->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
-                                    Encode(str(sz), v_oo), &v_oo_oid)));
-#else
-          TryVerifyStrict(
-              tbl_oorder(w)->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
-                                    Encode(str(sz), v_oo), &v_oo_oid));
-#endif
-          TryVerifyStrict(db->Commit(txn));
-          arena->reset();
-          txn = db->NewTransaction(0, *arena, txn_buf());
+          struct {
+            uint32_t o_entry_d;
+            int8_t o_ol_cnt;
+          } v_oo_reuse[batchsize];
 
-          const oorder_c_id_idx::key k_oo_idx(k_oo.o_w_id, k_oo.o_d_id,
-                                              v_oo.o_c_id, k_oo.o_id);
-#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
-          TryVerifyStrict(sync_wait_coro(tbl_oorder_c_id_idx(w)->InsertOID(
-              txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid)));
-#else
-          TryVerifyStrict(tbl_oorder_c_id_idx(w)->InsertOID(
-              txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
-#endif
-          TryVerifyStrict(db->Commit(txn));
+          for (uint j = 0; j < num; ++j) {
+            const uint c = c_begin + j;
+            const oorder::key k_oo(w, d, c);
 
-          if (c >= 2101) {
-            arena->reset();
-            txn = db->NewTransaction(0, *arena, txn_buf());
-            const new_order::key k_no(w, d, c);
-            const new_order::value v_no;
+            oorder::value v_oo;
+            v_oo.o_w_id = w;
+            v_oo.o_d_id = d;
+            v_oo.o_id = c;
+            v_oo.o_c_id = c_ids[c - 1];
+            if (k_oo.o_id < 2101)
+              v_oo.o_carrier_id = RandomNumber(r, 1, 10);
+            else
+              v_oo.o_carrier_id = 0;
+            v_oo.o_ol_cnt = NumOrderLinesPerCustomer();
+            v_oo.o_all_local = 1;
+            v_oo.o_entry_d = GetCurrentTimeMillis();
+            v_oo_reuse[j].o_entry_d = v_oo.o_entry_d;
+            v_oo_reuse[j].o_ol_cnt = v_oo.o_ol_cnt;
 
 #ifndef NDEBUG
-            checker::SanityCheckNewOrder(&k_no);
+            checker::SanityCheckOOrder(&k_oo, &v_oo);
 #endif
-            const size_t sz = Size(v_no);
-            new_order_total_sz += sz;
-            n_new_orders++;
-#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
-            TryVerifyStrict(sync_wait_coro(tbl_new_order(w)->InsertRecord(
-                txn, Encode(str(Size(k_no)), k_no), Encode(str(sz), v_no))));
-#else
-            TryVerifyStrict(tbl_new_order(w)->InsertRecord(
-                txn, Encode(str(Size(k_no)), k_no), Encode(str(sz), v_no)));
-#endif
-            TryVerifyStrict(db->Commit(txn));
+            const size_t sz = Size(v_oo);
+            oorder_total_sz += sz;
+            n_oorders++;
+#if defined(OLTPIM)
+            const uint64_t pk_oo = tpcc_key64::oorder(k_oo);
+            tbl_oorder(w)->pim_InsertRecordBegin(txn, pk_oo, Encode(str(sz), v_oo), &args[j], &rets[j], &reqs[j], &pim_ids[j]);
           }
+          //printf("o1\n");
+          for (uint j = 0; j < num; ++j) {
+            const uint c = c_begin + j;
+            uint64_t v_oo_oid = 0;
+            TryVerifyStrict(sync_wait_oltpim_coro(tbl_oorder(w)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j], &v_oo_oid)));
 
-          for (uint l = 1; l <= uint(v_oo.o_ol_cnt); l++) {
-            const order_line::key k_ol(w, d, c, l);
+#else
+            ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
+#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
+            TryVerifyStrict(
+                sync_wait_coro(tbl_oorder(w)->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
+                                      Encode(str(sz), v_oo), &v_oo_oid)));
+#else
+            TryVerifyStrict(
+                tbl_oorder(w)->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
+                                      Encode(str(sz), v_oo), &v_oo_oid));
+#endif
+#endif // !defined(OLTPIM)
 
-            order_line::value v_ol;
-            v_ol.ol_i_id = RandomNumber(r, 1, 100000);
-            if (k_ol.ol_o_id < 2101) {
-              v_ol.ol_delivery_d = v_oo.o_entry_d;
-              v_ol.ol_amount = 0;
-            } else {
-              v_ol.ol_delivery_d = 0;
-              // random within [0.01 .. 9,999.99]
-              v_ol.ol_amount = (float)(RandomNumber(r, 1, 999999) / 100.0);
+            const oorder_c_id_idx::key k_oo_idx(w, d, c_ids[c - 1], c);
+#if defined(OLTPIM)
+            const uint64_t pk_oo_idx = tpcc_key64::oorder_c_id_idx(k_oo_idx);
+            tbl_oorder_c_id_idx(w)->pim_InsertOIDBegin(txn, pk_oo_idx, v_oo_oid, &args[j], &rets[j], &reqs[j]);
+          }
+          //printf("o2\n");
+          for (uint j = 0; j < num; ++j) {
+            const uint c = c_begin + j;
+            TryVerifyStrict(sync_wait_oltpim_coro(tbl_oorder_c_id_idx(w)->pim_InsertOIDEnd(txn, &reqs[j])));
+#else
+#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
+            TryVerifyStrict(sync_wait_coro(tbl_oorder_c_id_idx(w)->InsertOID(
+                txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid)));
+#else
+            TryVerifyStrict(tbl_oorder_c_id_idx(w)->InsertOID(
+                txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
+#endif
+#endif // !defined(OLTPIM)
+
+            if (c >= 2101) {
+              const new_order::key k_no(w, d, c);
+              const new_order::value v_no(w, d, c);
+
+#ifndef NDEBUG
+              checker::SanityCheckNewOrder(&k_no);
+#endif
+              const size_t sz = Size(v_no);
+              new_order_total_sz += sz;
+              n_new_orders++;
+#if defined(OLTPIM)
+              const uint64_t pk_no = tpcc_key64::new_order(k_no);
+              tbl_new_order(w)->pim_InsertRecordBegin(txn, pk_no, Encode(str(sz), v_no), &args[j], &rets[j], &reqs[j], &pim_ids[j]);
             }
-
-            v_ol.ol_supply_w_id = k_ol.ol_w_id;
-            v_ol.ol_quantity = 5;
-            // v_ol.ol_dist_info comes from stock_data(ol_supply_w_id, ol_o_id)
-            // v_ol.ol_dist_info = RandomStr(r, 24);
-
-#ifndef NDEBUG
-            checker::SanityCheckOrderLine(&k_ol, &v_ol);
+          }
+          //printf("o3\n");
+          for (uint j = 0; j < num; ++j) {
+            const uint c = c_begin + j;
+            if (c >= 2101) {
+              TryVerifyStrict(sync_wait_oltpim_coro(tbl_new_order(w)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j])));
+#else
+#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
+              TryVerifyStrict(sync_wait_coro(tbl_new_order(w)->InsertRecord(
+                  txn, Encode(str(Size(k_no)), k_no), Encode(str(sz), v_no))));
+#else
+              TryVerifyStrict(tbl_new_order(w)->InsertRecord(
+                  txn, Encode(str(Size(k_no)), k_no), Encode(str(sz), v_no)));
 #endif
-            const size_t sz = Size(v_ol);
-            order_line_total_sz += sz;
-            n_order_lines++;
+#endif // !defined(OLTPIM)
+            }
+          }
+          TryVerifyStrict(db->Commit(txn));
+          //printf("o4\n");
+
+          for (uint j_out = 0; j_out < num; j_out += ol_batchsize) {
+            const uint num_oos = std::min<uint>(ol_batchsize, num - j_out);
             arena->reset();
             txn = db->NewTransaction(0, *arena, txn_buf());
-#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
-            TryVerifyStrict(sync_wait_coro(tbl_order_line(w)->InsertRecord(
-                txn, Encode(str(Size(k_ol)), k_ol), Encode(str(sz), v_ol))));
-#else
-            TryVerifyStrict(tbl_order_line(w)->InsertRecord(
-                txn, Encode(str(Size(k_ol)), k_ol), Encode(str(sz), v_ol)));
+            for (uint j_in = 0; j_in < num_oos; ++j_in) {
+              const uint j = j_out + j_in;
+              const uint c = c_begin + j;
+              for (uint l = 0; l < uint(v_oo_reuse[j].o_ol_cnt); ++l) {
+                const uint batch_jdx = j_in * 15 + l;
+                const order_line::key k_ol(w, d, c, l + 1);
+
+                order_line::value v_ol;
+                v_ol.ol_w_id = w;
+                v_ol.ol_d_id = d;
+                v_ol.ol_o_id = c;
+                v_ol.ol_number = l + 1;
+                v_ol.ol_i_id = RandomNumber(r, 1, 100000);
+                if (k_ol.ol_o_id < 2101) {
+                  v_ol.ol_delivery_d = v_oo_reuse[j].o_entry_d;
+                  v_ol.ol_amount = 0;
+                } else {
+                  v_ol.ol_delivery_d = 0;
+                  // random within [0.01 .. 9,999.99]
+                  v_ol.ol_amount = (float)(RandomNumber(r, 1, 999999) / 100.0);
+                }
+
+                v_ol.ol_supply_w_id = k_ol.ol_w_id;
+                v_ol.ol_quantity = 5;
+                // v_ol.ol_dist_info comes from stock_data(ol_supply_w_id, ol_o_id)
+                // v_ol.ol_dist_info = RandomStr(r, 24);
+
+#ifndef NDEBUG
+                checker::SanityCheckOrderLine(&k_ol, &v_ol);
 #endif
+                const size_t sz = Size(v_ol);
+                order_line_total_sz += sz;
+                n_order_lines++;
+
+#if defined(OLTPIM)
+                const uint64_t pk_ol = tpcc_key64::order_line(k_ol);
+                tbl_order_line(w)->pim_InsertRecordBegin(txn, pk_ol, Encode(str(sz), v_ol),
+                  &args[batch_jdx], &rets[batch_jdx], &reqs[batch_jdx], &pim_ids[batch_jdx]);
+              }
+            }
+            //printf("o5-%u\n", j_out);
+            for (uint j_in = 0; j_in < num_oos; ++j_in) {
+              const uint j = j_out + j_in;
+              for (uint l = 0; l < uint(v_oo_reuse[j].o_ol_cnt); ++l) {
+                const uint batch_jdx = j_in * 15 + l;
+                TryVerifyStrict(sync_wait_oltpim_coro(tbl_order_line(w)->pim_InsertRecordEnd(txn, &reqs[batch_jdx], pim_ids[batch_jdx])));
+#else
+#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
+                TryVerifyStrict(sync_wait_coro(tbl_order_line(w)->InsertRecord(
+                    txn, Encode(str(Size(k_ol)), k_ol), Encode(str(sz), v_ol))));
+#else
+                TryVerifyStrict(tbl_order_line(w)->InsertRecord(
+                    txn, Encode(str(Size(k_ol)), k_ol), Encode(str(sz), v_ol)));
+#endif
+#endif // !defined(OLTPIM)
+              }
+            }
+            //printf("o6-%u\n", j_out);
             TryVerifyStrict(db->Commit(txn));
           }
-          c++;
+          //printf("o7\n");
         }
       }
     }
@@ -1286,7 +1429,7 @@ class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
     MARK_REFERENCED(keylen);
     MARK_REFERENCED(value);
     ASSERT(keylen == sizeof(new_order::key));
-    ASSERT(value.size() == sizeof(new_order::value));
+    //ASSERT(value.size() == sizeof(new_order::value));
     k_no = Decode(keyp, k_no_temp);
 #ifndef NDEBUG
     new_order::value v_no_temp;
@@ -1426,19 +1569,16 @@ class tpcc_bench_runner : public bench_runner {
     RegisterIndex(db, "warehouse",  "warehouse",        true);
 #if defined(OLTPIM)
     ermia::pim::set_index_partition_interval("customer", 1);
-    ermia::pim::set_index_partition_interval("customer_name_idx", 1);
+    ermia::pim::set_index_partition_interval("customer_name_idx", tpcc_key64::customer_name_idx_interval);
     ermia::pim::set_index_partition_interval("district", 1);
     ermia::pim::set_index_partition_interval("history", 1);
     ermia::pim::set_index_partition_interval("item", 1);
-    ermia::pim::set_index_partition_interval("new_order", 1);
+    ermia::pim::set_index_partition_interval("new_order", tpcc_key64::new_order_interval);
     ermia::pim::set_index_partition_interval("oorder", 1);
-    ermia::pim::set_index_partition_interval("oorder_c_id_idx", 1);
-    ermia::pim::set_index_partition_interval("order_line", 1);
+    ermia::pim::set_index_partition_interval("oorder_c_id_idx", tpcc_key64::oorder_c_id_idx_interval);
+    ermia::pim::set_index_partition_interval("order_line", tpcc_key64::order_line_interval);
     ermia::pim::set_index_partition_interval("stock", 1);
     ermia::pim::set_index_partition_interval("stock_data", 1);
-    ermia::pim::set_index_partition_interval("nation", 1);
-    ermia::pim::set_index_partition_interval("region", 1);
-    ermia::pim::set_index_partition_interval("supplier", 1);
     ermia::pim::set_index_partition_interval("warehouse", 1);
     ermia::pim::finalize_index_setup();
 #endif
@@ -1472,10 +1612,12 @@ class tpcc_bench_runner : public bench_runner {
   virtual std::vector<bench_loader *> make_loaders() {
     std::vector<bench_loader *> ret;
     ret.push_back(new tpcc_warehouse_loader(9324, db, open_tables, partitions));
+#if !defined(OLTPIM)
     ret.push_back(new tpcc_nation_loader(1512, db, open_tables, partitions));
     ret.push_back(new tpcc_region_loader(789121, db, open_tables, partitions));
     ret.push_back(
         new tpcc_supplier_loader(51271928, db, open_tables, partitions));
+#endif
     ret.push_back(new tpcc_item_loader(235443, db, open_tables, partitions));
     if (ermia::config::parallel_loading) {
       util::fast_random r(89785943);

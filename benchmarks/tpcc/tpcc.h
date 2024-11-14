@@ -34,7 +34,8 @@ DO_STRUCT(customer_name_idx, CUSTOMER_NAME_IDX_KEY_FIELDS,
 
 #define DISTRICT_KEY_FIELDS(x, y) x(int32_t, d_w_id) y(int32_t, d_id)
 #define DISTRICT_VALUE_FIELDS(x, y)                                   \
-  x(float, d_ytd) y(float, d_tax) y(int32_t, d_next_o_id)             \
+  x(int32_t, d_w_id) y(int32_t, d_id)                                 \
+  y(float, d_ytd) y(float, d_tax) y(int32_t, d_next_o_id)             \
       y(inline_str_8<10>, d_name) y(inline_str_8<20>, d_street_1)     \
           y(inline_str_8<20>, d_street_2) y(inline_str_8<20>, d_city) \
               y(inline_str_fixed<2>, d_state) y(inline_str_fixed<9>, d_zip)
@@ -55,15 +56,15 @@ DO_STRUCT(item, ITEM_KEY_FIELDS, ITEM_VALUE_FIELDS)
 
 #define NEW_ORDER_KEY_FIELDS(x, y) \
   x(int32_t, no_w_id) y(int32_t, no_d_id) y(int32_t, no_o_id)
-// need dummy b/c our btree cannot have empty values.
-// we also size value so that it can fit a key
-#define NEW_ORDER_VALUE_FIELDS(x, y) x(inline_str_fixed<12>, no_dummy)
+#define NEW_ORDER_VALUE_FIELDS(x, y) \
+  x(int32_t, no_w_id) y(int32_t, no_d_id) y(int32_t, no_o_id)
 DO_STRUCT(new_order, NEW_ORDER_KEY_FIELDS, NEW_ORDER_VALUE_FIELDS)
 
 #define OORDER_KEY_FIELDS(x, y) \
   x(int32_t, o_w_id) y(int32_t, o_d_id) y(int32_t, o_id)
 #define OORDER_VALUE_FIELDS(x, y)                                 \
-  x(int32_t, o_c_id) y(int32_t, o_carrier_id) y(int8_t, o_ol_cnt) \
+  x(int32_t, o_w_id) y(int32_t, o_d_id) y(int32_t, o_id)          \
+  y(int32_t, o_c_id) y(int32_t, o_carrier_id) y(int8_t, o_ol_cnt) \
       y(bool, o_all_local) y(uint32_t, o_entry_d)
 DO_STRUCT(oorder, OORDER_KEY_FIELDS, OORDER_VALUE_FIELDS)
 
@@ -76,8 +77,10 @@ DO_STRUCT(oorder_c_id_idx, OORDER_C_ID_IDX_KEY_FIELDS,
 #define ORDER_LINE_KEY_FIELDS(x, y)                           \
   x(int32_t, ol_w_id) y(int32_t, ol_d_id) y(int32_t, ol_o_id) \
       y(int32_t, ol_number)
-#define ORDER_LINE_VALUE_FIELDS(x, y)                                \
-  x(int32_t, ol_i_id) y(uint32_t, ol_delivery_d) y(float, ol_amount) \
+#define ORDER_LINE_VALUE_FIELDS(x, y)                                 \
+  x(int32_t, ol_w_id) y(int32_t, ol_d_id) y(int32_t, ol_o_id)         \
+      y(int32_t, ol_number)                                           \
+  y(int32_t, ol_i_id) y(uint32_t, ol_delivery_d) y(float, ol_amount)  \
       y(int32_t, ol_supply_w_id) y(int8_t, ol_quantity)
 DO_STRUCT(order_line, ORDER_LINE_KEY_FIELDS, ORDER_LINE_VALUE_FIELDS)
 

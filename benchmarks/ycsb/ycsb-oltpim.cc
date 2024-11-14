@@ -245,13 +245,8 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       if (!ermia::config::index_probe_only) {
-#if defined(OLTPIM)
-        uint64_t pim_key = rng_gen_key(true);
-        rc = co_await table_index->pim_GetRecord(txn, pim_key, v);
-#else
-        auto &k = GenerateKey(txn, true);
-        rc = co_await table_index->task_GetRecord(txn, k, v);  // Read
-#endif
+      uint64_t pim_key = rng_gen_key(true);
+      rc = co_await table_index->pim_GetRecord(txn, pim_key, v);
       } else {
         //ermia::varstr &k = GenerateKey(txn, true);
         ermia::varstr &k = str(arenas[idx], sizeof(ycsb_kv::value));
@@ -516,13 +511,8 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     for (int i = 0; i < FLAGS_ycsb_update_per_tx; ++i) {
       ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
       new (v.data()) ycsb_kv::value("a");
-#if defined(OLTPIM)
       uint64_t pim_key = rng_gen_key(true);
       auto rc = co_await table_index->pim_UpdateRecord(txn, pim_key, v);
-#else
-      ermia::varstr &k = GenerateKey(txn);
-      auto rc = co_await table_index->task_UpdateRecord(txn, k, v);  // Modify-write
-#endif
       TryCatchCoro(rc);
     }
 

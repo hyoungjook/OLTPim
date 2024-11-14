@@ -44,6 +44,24 @@ struct write_set_t {
   inline log_record_t &operator[](uint32_t idx) {return entries[idx];}
 };
 
+class PIMScanCallback {
+public:
+  virtual bool Invoke(const varstr &value) = 0;
+  virtual uint32_t max_outs_per_interval() = 0;
+  virtual uint32_t num_intervals() = 0;
+  // Child class provides the storage
+    // The following 3 storages...
+  virtual uint8_t *scan_args_storage() = 0; // args_scan_t[num_intervals]
+  virtual uint8_t *scan_rets_storage() = 0; // uint8_t[req_scan_rets_size(max_outs_per_interval) * num_intervals]
+  virtual uint32_t scan_rets_size() = 0; // req_scan_rets_size(max_outs_per_interval)
+  virtual uint8_t *scan_reqs_storage() = 0; // oltpim::request[num_intervals]
+    // and the following 3 storages...
+  virtual uint8_t *get_args_storage() = 0; // args_get_t[max_outs]
+  virtual uint8_t *get_rets_storage() = 0; // rets_get_t[max_outs]
+  virtual uint8_t *get_reqs_storage() = 0; // oltpim::request[max_outs]
+    // can have overlapping addresses (except scan_rets).
+};
+
 }
 
 }
