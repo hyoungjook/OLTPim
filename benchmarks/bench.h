@@ -296,6 +296,13 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   co_return r;                                    \
 }
 
+#define __abort_txn_oltpim(r)                     \
+{                                                 \
+  co_await db->Abort(txn);                        \
+  if (!r.IsAbort()) co_return {RC_ABORT_USER};    \
+  co_return r;                                    \
+}
+
 // NOTE: only use these in transaction benchmark (e.g., TPCC) code, not in
 // engine code
 
@@ -311,6 +318,12 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
 {                                       \
   rc_t r = rc;                          \
   if (r.IsAbort()) __abort_txn_coro(r); \
+}
+
+#define TryCatchOltpim(rc)              \
+{                                       \
+  rc_t r = rc;                          \
+  if (r.IsAbort()) __abort_txn_oltpim(r); \
 }
 
 // same as TryCatch but don't do abort, only return rc

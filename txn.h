@@ -22,7 +22,18 @@
 using google::dense_hash_map;
 
 #if defined(OLTPIM)
+#include "dbcore/sm-coroutine.h"
 #include "oltpim.h"
+#endif
+
+#if defined(OLTPIM)
+#define COMMIT_RET_TYPE ermia::coro::task<rc_t>
+#define COMMIT_RETURN co_return
+#define COMMIT_SYNC(expr) sync_wait_oltpim_coro(expr)
+#else
+#define COMMIT_RET_TYPE rc_t
+#define COMMIT_RETURN return
+#define COMMIT_SYNC(expr) expr
 #endif
 
 namespace ermia {
@@ -115,9 +126,9 @@ protected:
 
   void uninitialize();
 
-  rc_t commit();
+  COMMIT_RET_TYPE commit();
 #if defined OLTPIM
-  rc_t oltpim_commit();
+  ermia::coro::task<rc_t> oltpim_commit();
 #elif defined SSN
   rc_t parallel_ssn_commit();
   rc_t ssn_read(dbtuple *tuple);
@@ -132,7 +143,7 @@ protected:
 #endif
 
   bool MasstreeCheckPhantom();
-  void Abort();
+  COMMIT_RET_TYPE Abort();
 
   // Insert a record to the underlying table
   OID Insert(TableDescriptor *td, bool cold, varstr *value, dbtuple **out_tuple = nullptr);

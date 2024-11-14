@@ -274,7 +274,7 @@ class tpcc_oltpim_worker : public bench_worker, public tpcc_worker_mixin {
         rc_t rc = std::get<0>(task_queue[i]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
         if (!rc.IsAbort()) {
-          rc = db->Commit(&transactions[i]);
+          rc = co_await db->Commit(&transactions[i]);
         }
 #endif
         finish_workload(rc, task_workload_idxs[i], ts[i]);
@@ -376,7 +376,7 @@ class tpcc_oltpim_worker : public bench_worker, public tpcc_worker_mixin {
         rc_t rc = std::get<0>(task_queue[i]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
         if (!rc.IsAbort()) {
-          rc = db->Commit(&transactions[i]);
+          rc = co_await db->Commit(&transactions[i]);
         }
 #endif
         finish_workload(rc, task_workload_idxs[i], ts[i]);
@@ -522,7 +522,7 @@ class tpcc_oltpim_worker : public bench_worker, public tpcc_worker_mixin {
 
 #ifdef CORO_BATCH_COMMIT
           if (!rc.IsAbort()) {
-            rc = db->Commit(&transactions[coro_task_id]);
+            rc = co_await db->Commit(&transactions[coro_task_id]);
           }
 #endif
           finish_workload(rc, task_workload_idxs[coro_task_id], ts[coro_task_id]);
@@ -552,7 +552,7 @@ coldq:
               rc_t rc = std::get<0>(cold_queue[cold_queue_idx]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
               if (!rc.IsAbort()) {
-                rc = db->Commit(&transactions[coro_task_id]);
+                rc = co_await db->Commit(&transactions[coro_task_id]);
               }
 #endif
               finish_workload(rc, task_workload_idxs[coro_task_id], ts[coro_task_id]);
@@ -761,7 +761,7 @@ coldq:
 
 #ifdef CORO_BATCH_COMMIT
         if (!rc.IsAbort()) {
-          rc = db->Commit(&transactions[coro_task_id]);
+          rc = co_await db->Commit(&transactions[coro_task_id]);
         }
 #endif
         if (task_workload_idxs[coro_task_id] == 1) {
@@ -792,7 +792,7 @@ coldq:
               rc_t rc = std::get<0>(cold_queue[cold_queue_idx]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
               if (!rc.IsAbort()) {
-                rc = db->Commit(&transactions[coro_task_id]);
+                rc = co_await db->Commit(&transactions[coro_task_id]);
               }
 #endif
               if (task_workload_idxs[coro_task_id] == 1) {
@@ -1023,7 +1023,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
   rc = co_await tbl_new_order(warehouse_id)
            ->pim_InsertRecord(txn, pk_no,
                           Encode(str(arenas[idx], new_order_sz), v_no));
-  TryCatchCoro(rc);
+  TryCatchOltpim(rc);
 
   if (!FLAGS_tpcc_new_order_fast_id_gen) {
     district::value v_d_new(*v_d);
@@ -1031,7 +1031,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
     rc = co_await tbl_district(warehouse_id)
              ->pim_UpdateRecord(txn, pk_d,
                             Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
   }
 
   const oorder::key k_oo(warehouse_id, districtID, k_no.no_o_id);
@@ -1048,13 +1048,13 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
   rc = co_await tbl_oorder(warehouse_id)
            ->pim_InsertRecord(txn, pk_oo,
                           Encode(str(arenas[idx], oorder_sz), v_oo), &v_oo_oid);
-  TryCatchCoro(rc);
+  TryCatchOltpim(rc);
 
   const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID, k_no.no_o_id);
   const uint64_t pk_oo_idx = tpcc_key64::oorder_c_id_idx(k_oo_idx);
   rc = co_await tbl_oorder_c_id_idx(warehouse_id)
            ->pim_InsertOID(txn, pk_oo_idx, v_oo_oid);
-  TryCatchCoro(rc);
+  TryCatchOltpim(rc);
 
 
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
@@ -1097,7 +1097,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
     rc = co_await tbl_stock(ol_supply_w_id)
               ->pim_UpdateRecord(txn, pk_s,
                             Encode(str(arenas[idx], Size(v_s_new)), v_s_new));
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
 
     const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
                               ol_number);
@@ -1113,11 +1113,12 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
     rc = co_await tbl_order_line(warehouse_id)
               ->pim_InsertRecord(txn, pk_ol,
                             Encode(str(arenas[idx], order_line_sz), v_ol));
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
   }
 
 #ifndef CORO_BATCH_COMMIT
-  TryCatchCoro(db->Commit(txn));
+  rc = co_await db->Commit(txn);
+  TryCatchOltpim(rc);
 #endif
   co_return {RC_TRUE};
 }  // new-order
@@ -1177,7 +1178,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
   rc = co_await tbl_warehouse(warehouse_id)
            ->pim_UpdateRecord(txn, pk_w,
                           Encode(str(arenas[idx], Size(v_w_new)), v_w_new));
-  TryCatchCoro(rc);
+  TryCatchOltpim(rc);
 
   const district::key k_d(warehouse_id, districtID);
   const uint64_t pk_d = tpcc_key64::district(k_d);
@@ -1199,7 +1200,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
   rc = co_await tbl_district(warehouse_id)
            ->pim_UpdateRecord(txn, pk_d,
                           Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
-  TryCatchCoro(rc);
+  TryCatchOltpim(rc);
 
   customer::key k_c;
   uint64_t pk_c;
@@ -1221,7 +1222,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
     pim_static_limit_callback<NMaxCustomerIdxScanElems,false> c;
     rc = co_await tbl_customer_name_idx(customerWarehouseID)
              ->pim_Scan(txn, pk_c_idx_0, pk_c_idx_1, c, NMaxCustomerIdxScanElems);
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
 
     ALWAYS_ASSERT(c.size() > 0);
     //ASSERT(c.size() < NMaxCustomerIdxScanElems);
@@ -1266,7 +1267,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
   rc = co_await tbl_customer(customerWarehouseID)
            ->pim_UpdateRecord(txn, pk_c,
                           Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
-  TryCatchCoro(rc);
+  TryCatchOltpim(rc);
 
   const history::key k_h(k_c.c_d_id, k_c.c_w_id, k_c.c_id, districtID,
                          warehouse_id, ts);
@@ -1283,10 +1284,11 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
   rc = co_await tbl_history(warehouse_id)
            ->pim_InsertRecord(txn, pk_h,
                           Encode(str(arenas[idx], Size(v_h)), v_h));
-  TryCatchCoro(rc);
+  TryCatchOltpim(rc);
 
 #ifndef CORO_BATCH_COMMIT
-  TryCatchCoro(db->Commit(txn));
+  rc = co_await db->Commit(txn);
+  TryCatchOltpim(rc);
 #endif
   co_return {RC_TRUE};
 }  // payment
@@ -1335,7 +1337,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
     {
       rc = co_await tbl_new_order(warehouse_id)
                ->pim_Scan(txn, pk_no_0, pk_no_1, new_order_c, 1);
-      TryCatchCoro(rc);
+      TryCatchOltpim(rc);
     }
     if (unlikely(new_order_c.size() == 0)) continue;
 
@@ -1351,7 +1353,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
     oorder::value v_oo_temp;
     ermia::varstr valptr;
     rc = co_await tbl_oorder(warehouse_id)->pim_GetRecord(txn, pk_oo, valptr);
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
 
     valptr.prefetch();
     co_await suspend_always{};
@@ -1370,7 +1372,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
     // XXX(stephentu): mutable scans would help here
     rc = co_await tbl_order_line(warehouse_id)
              ->pim_Scan(txn, pk_oo_0, pk_oo_1, c, 15);
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
 
     float sum = 0.0;
     for (size_t i = 0; i < c.size(); i++) {
@@ -1390,7 +1392,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
       rc = co_await tbl_order_line(warehouse_id)
                 ->pim_UpdateRecord(txn, pk_ol,
                       Encode(str(arenas[idx], Size(v_ol_new)), v_ol_new));
-      TryCatchCoro(rc);
+      TryCatchOltpim(rc);
     }
 
     // delete new order
@@ -1398,7 +1400,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
     const uint64_t pk_no = tpcc_key64::new_order(k_no);
     rc = co_await tbl_new_order(warehouse_id)
              ->pim_RemoveRecord(txn, pk_no);
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
 
     // update oorder
     oorder::value v_oo_new(*v_oo);
@@ -1407,7 +1409,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
             ->pim_UpdateRecord(txn, pk_oo,
                            Encode(str(arenas[idx], Size(v_oo_new)), v_oo_new));
 
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
 
     const uint c_id = v_oo->o_c_id;
     const float ol_total = sum;
@@ -1427,11 +1429,12 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
     rc = co_await tbl_customer(warehouse_id)
              ->pim_UpdateRecord(txn, pk_c,
                             Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
   }
 
 #ifndef CORO_BATCH_COMMIT
-  TryCatchCoro(db->Commit(txn));
+  rc = co_await db->Commit(txn);
+  TryCatchOltpim(rc);
 #endif
 
   co_return {RC_TRUE};
@@ -1492,7 +1495,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_order_status(ermia::transaction 
     pim_static_limit_callback<NMaxCustomerIdxScanElems,false> c;  // probably a safe bet for now
     rc = co_await tbl_customer_name_idx(warehouse_id)
              ->pim_Scan(txn, pk_c_idx_0, pk_c_idx_1, c, NMaxCustomerIdxScanElems);
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
     ALWAYS_ASSERT(c.size() > 0);
     //ASSERT(c.size() < NMaxCustomerIdxScanElems);
     int index = c.size() / 2;
@@ -1535,7 +1538,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_order_status(ermia::transaction 
     // o_id stored in reverse order: search from pk_1 to pk_0
     rc = co_await tbl_oorder_c_id_idx(warehouse_id)
             ->pim_Scan(txn, pk_oo_idx_1, pk_oo_idx_0, c_oorder, 1);
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
   }
   ALWAYS_ASSERT(c_oorder.size());
 
@@ -1551,11 +1554,12 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_order_status(ermia::transaction 
   const uint64_t pk_ol_1 = tpcc_key64::order_line(k_ol_1);
   rc = co_await tbl_order_line(warehouse_id)
            ->pim_Scan(txn, pk_ol_0, pk_ol_1, c_order_line, 15);
-  TryCatchCoro(rc);
+  TryCatchOltpim(rc);
   ALWAYS_ASSERT(c_order_line.size() >= 5 && c_order_line.size() <= 15);
 
 #ifndef CORO_BATCH_COMMIT
-  TryCatchCoro(db->Commit(txn));
+  rc = co_await db->Commit(txn);
+  TryCatchOltpim(rc);
 #endif
 
   co_return {RC_TRUE};
@@ -1617,7 +1621,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_stock_level(ermia::transaction *
   {
     rc = co_await tbl_order_line(warehouse_id)
              ->pim_Scan(txn, pk_ol_0, pk_ol_1, c, 15);
-    TryCatchCoro(rc);
+    TryCatchOltpim(rc);
   }
 
   std::unordered_map<uint, bool> s_i_ids_distinct;
@@ -1640,7 +1644,8 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_stock_level(ermia::transaction *
   // NB(stephentu): s_i_ids_distinct.size() is the computed result of this txn
 
 #ifndef CORO_BATCH_COMMIT
-  TryCatchCoro(db->Commit(txn));
+  rc = co_await db->Commit(txn);
+  TryCatchOltpim(rc);
 #endif
 
   co_return {RC_TRUE};
@@ -1648,365 +1653,16 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_stock_level(ermia::transaction *
 
 ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_credit_check(ermia::transaction *txn, uint32_t idx) {
   ALWAYS_ASSERT(false);
-  /*
-          Note: Cahill's credit check transaction to introduce SI's anomaly.
-
-          SELECT c_balance, c_credit_lim
-          INTO :c_balance, :c_credit_lim
-          FROM Customer
-          WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
-
-          SELECT SUM(ol_amount) INTO :neworder_balance
-          FROM OrderLine, Orders, NewOrder
-          WHERE ol_o_id = o_id AND ol_d_id = :d_id
-          AND ol_w_id = :w_id AND o_d_id = :d_id
-          AND o_w_id = :w_id AND o_c_id = :c_id
-          AND no_o_id = o_id AND no_d_id = :d_id
-          AND no_w_id = :w_id
-
-          if (c_balance + neworder_balance > c_credit_lim)
-          c_credit = "BC";
-          else
-          c_credit = "GC";
-
-          SQL UPDATE Customer SET c_credit = :c_credit
-          WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
-  */
-
-  ermia::TXN::xid_context *xc = txn->GetXIDContext();
-  // TODO: fix epoch
-  xc->begin_epoch = 0;
-  rc_t rc = rc_t{RC_INVALID};
-
-  uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx;
-  } else {
-    _home_warehouse_id = home_warehouse_id;
-  }
-  const uint warehouse_id = pick_wh(r, _home_warehouse_id);
-  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
-  uint customerDistrictID, customerWarehouseID;
-  if (likely(FLAGS_tpcc_disable_xpartition_txn || NumWarehouses() == 1 ||
-             RandomNumber(r, 1, 100) <= 85)) {
-    customerDistrictID = districtID;
-    customerWarehouseID = warehouse_id;
-  } else {
-    customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
-    do {
-      customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
-    } while (customerWarehouseID == warehouse_id);
-  }
-  ASSERT(!FLAGS_tpcc_disable_xpartition_txn || customerWarehouseID == warehouse_id);
-
-  // select * from customer with random C_ID
-  customer::key k_c;
-  customer::value v_c_temp;
-  ermia::varstr valptr;
-  const uint customerID = GetCustomerId(r);
-  k_c.c_w_id = customerWarehouseID;
-  k_c.c_d_id = customerDistrictID;
-  k_c.c_id = customerID;
-
-  rc = co_await tbl_customer(customerWarehouseID)->task_GetRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
-  TryVerifyRelaxedCoro(rc);
-
-  const customer::value *v_c = Decode(valptr, v_c_temp);
-#ifndef NDEBUG
-  checker::SanityCheckCustomer(&k_c, v_c);
-#endif
-
-  // scan order
-  //		c_w_id = :w_id;
-  //		c_d_id = :d_id;
-  //		c_id = :c_id;
-  credit_check_order_scan_callback c_no(&arenas[idx]);
-  const new_order::key k_no_0(warehouse_id, districtID, 0);
-  const new_order::key k_no_1(warehouse_id, districtID,
-                              std::numeric_limits<int32_t>::max());
-  rc = co_await tbl_new_order(warehouse_id)
-           ->task_Scan(txn, Encode(str(arenas[idx], Size(k_no_0)), k_no_0),
-                  &Encode(str(arenas[idx], Size(k_no_1)), k_no_1), c_no);
-  TryCatchCoro(rc);
-  ALWAYS_ASSERT(c_no.output.size());
-
-  double sum = 0;
-  for (auto &k : c_no.output) {
-    new_order::key k_no_temp;
-    const new_order::key *k_no = Decode(*k, k_no_temp);
-
-    const oorder::key k_oo(warehouse_id, districtID, k_no->no_o_id);
-    oorder::value v;
-    tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_oo)), k_oo), valptr);
-    TryCatchCondCoro(rc, continue);
-    //valptr.prefetch();
-    //co_await suspend_always{};
-    auto *vv = Decode(valptr, v);
-
-    // Order line scan
-    //		ol_d_id = :d_id
-    //		ol_w_id = :w_id
-    //		ol_o_id = o_id
-    //		ol_number = 1-15
-    credit_check_order_line_scan_callback c_ol;
-    const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
-    const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
-    // XXX(tzwang): coro_scan here make it very slow (~60% slower)
-    rc = co_await tbl_order_line(warehouse_id)
-             ->task_Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
-                    &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_ol);
-    TryCatchCoro(rc);
-
-    // Aggregation
-    sum += c_ol.sum;
-  }
-
-  // c_credit update
-  customer::value v_c_new(*v_c);
-  if (v_c_new.c_balance + sum >= 5000)  // Threshold = 5K
-    v_c_new.c_credit.assign("BC");
-  else
-    v_c_new.c_credit.assign("GC");
-
-  rc = co_await tbl_customer(customerWarehouseID)
-           ->task_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
-                          Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
-  TryCatchCoro(rc);
-
-#ifndef CORO_BATCH_COMMIT
-  TryCatchCoro(db->Commit(txn));
-#endif
-
   co_return {RC_TRUE};
 }  // credit-check
 
 ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_query2(ermia::transaction *txn, uint32_t idx) {
   ALWAYS_ASSERT(false);
-  // TODO(yongjunh): use TXN_FLAG_READ_MOSTLY once SSN's and SSI's read optimization are available.
-  ermia::TXN::xid_context *xc = txn->GetXIDContext();
-  // TODO: fix epoch
-  xc->begin_epoch = 0;
-  rc_t rc = rc_t{RC_INVALID};
-
-  tpcc_table_scanner r_scanner(&arenas[idx]);
-  r_scanner.clear();
-  const region::key k_r_0(0);
-  const region::key k_r_1(5);
-  rc = tbl_region(1)->Scan(txn, Encode(str(arenas[idx], sizeof(k_r_0)), k_r_0),
-                           &Encode(str(arenas[idx], sizeof(k_r_1)), k_r_1), r_scanner);
-  TryCatchCoro(rc);
-  ALWAYS_ASSERT(r_scanner.output.size() == 5);
-
-  tpcc_table_scanner n_scanner(&arenas[idx]);
-  n_scanner.clear();
-  const nation::key k_n_0(0);
-  const nation::key k_n_1(std::numeric_limits<int32_t>::max());
-  rc = tbl_nation(1)->Scan(txn, Encode(str(arenas[idx], sizeof(k_n_0)), k_n_0),
-                           &Encode(str(arenas[idx], sizeof(k_n_1)), k_n_1), n_scanner);
-  TryCatchCoro(rc);
-
-  ALWAYS_ASSERT(n_scanner.output.size() == 62);
-
-  // Pick a target region
-  auto target_region = RandomNumber(r, 0, 4);
-  //	auto target_region = 3;
-  ALWAYS_ASSERT(0 <= target_region and target_region <= 4);
-
-  // Scan region
-  for (auto &r_r : r_scanner.output) {
-    region::key k_r_temp;
-    region::value v_r_temp;
-    const region::value *v_r = Decode(*r_r.second, v_r_temp);
-
-    // filtering region
-    if (v_r->r_name != std::string(regions[target_region])) continue;
-
-    const region::key *k_r = Decode(*r_r.first, k_r_temp);
-
-    // Scan nation
-    for (auto &r_n : n_scanner.output) {
-      nation::key k_n_temp;
-      nation::value v_n_temp;
-      const nation::value *v_n = Decode(*r_n.second, v_n_temp);
-
-      // filtering nation
-      if (k_r->r_regionkey != v_n->n_regionkey) continue;
-
-      const nation::key *k_n = Decode(*r_n.first, k_n_temp);
-
-      // Scan suppliers
-      for (auto i = 0; i < FLAGS_tpcc_nr_suppliers; i++) {
-        const supplier::key k_su(i);
-        supplier::value v_su_tmp;
-        ermia::varstr valptr;
-
-        rc_t rc = rc_t{RC_INVALID};
-        // XXX(tzwang): not profitable to coroutinize
-        tbl_supplier(1)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_su)), k_su), valptr);
-        TryVerifyRelaxedCoro(rc);
-
-        arenas[idx].return_space(Size(k_su));
-        const supplier::value *v_su = Decode(valptr, v_su_tmp);
-
-        // Filtering suppliers
-        if (k_n->n_nationkey != v_su->su_nationkey) continue;
-
-        // aggregate - finding a stock tuple having min. stock level
-        stock::key min_k_s(0, 0);
-        stock::value min_v_s(0, 0, 0, 0);
-
-        int16_t min_qty = std::numeric_limits<int16_t>::max();
-        for (auto &it : supp_stock_map[k_su.su_suppkey]) {
-          // already know "mod((s_w_id*s_i_id),10000)=su_suppkey" items
-          const stock::key k_s(it.first, it.second);
-          stock::value v_s_tmp(0, 0, 0, 0);
-          rc = co_await tbl_stock(it.first)->task_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
-          TryVerifyRelaxedCoro(rc);
-
-          arenas[idx].return_space(Size(k_s));
-          const stock::value *v_s = Decode(valptr, v_s_tmp);
-
-          ASSERT(k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey);
-          if (min_qty > v_s->s_quantity) {
-            min_k_s.s_w_id = k_s.s_w_id;
-            min_k_s.s_i_id = k_s.s_i_id;
-            min_v_s.s_quantity = v_s->s_quantity;
-            min_v_s.s_ytd = v_s->s_ytd;
-            min_v_s.s_order_cnt = v_s->s_order_cnt;
-            min_v_s.s_remote_cnt = v_s->s_remote_cnt;
-          }
-        }
-
-        // fetch the (lowest stock level) item info
-        const item::key k_i(min_k_s.s_i_id);
-        item::value v_i_temp;
-        rc = rc_t{RC_INVALID};
-        // XXX(tzwang): not profitable to coroutinize
-        tbl_item(1)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
-        TryVerifyRelaxedCoro(rc);
-
-        arenas[idx].return_space(Size(k_i));
-        const item::value *v_i = Decode(valptr, v_i_temp);
-#ifndef NDEBUG
-        checker::SanityCheckItem(&k_i, v_i);
-#endif
-
-        //  filtering item (i_data like '%b')
-        auto found = v_i->i_data.str().find('b');
-        if (found != std::string::npos) continue;
-
-        // XXX. read-mostly txn: update stock or item here
-
-        if (min_v_s.s_quantity < 15) {
-          stock::value new_v_s;
-          new_v_s.s_quantity = min_v_s.s_quantity + 50;
-          new_v_s.s_ytd = min_v_s.s_ytd;
-          new_v_s.s_order_cnt = min_v_s.s_order_cnt;
-          new_v_s.s_remote_cnt = min_v_s.s_remote_cnt;
-#ifndef NDEBUG
-          checker::SanityCheckStock(&min_k_s);
-#endif
-          rc = co_await tbl_stock(min_k_s.s_w_id)
-                   ->task_UpdateRecord(txn, Encode(str(arenas[idx], Size(min_k_s)), min_k_s),
-                                  Encode(str(arenas[idx], Size(new_v_s)), new_v_s));
-          TryCatchCoro(rc);
-        }
-
-        // TODO. sorting by n_name, su_name, i_id
-
-        /*
-        cout << k_su.su_suppkey        << ","
-                << v_su->su_name                << ","
-                << v_n->n_name                  << ","
-                << k_i.i_id                     << ","
-                << v_i->i_name                  << std::endl;
-                */
-      }
-    }
-  }
-
-#ifndef CORO_BATCH_COMMIT
-  TryCatchCoro(db->Commit(txn));
-#endif
   co_return {RC_TRUE};
 }
 
 ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_microbench_random(ermia::transaction *txn, uint32_t idx) {
   ALWAYS_ASSERT(false);
-  ermia::TXN::xid_context *xc = txn->GetXIDContext();
-  // TODO: fix epoch
-  xc->begin_epoch = 0;
-  rc_t rc = rc_t{RC_INVALID};
-
-  uint start_w = 0, start_s = 0;
-  ASSERT(NumWarehouses() * NumItems() >= g_microbench_rows);
-
-  // pick start row, if it's not enough, later wrap to the first row
-  uint w = start_w = RandomNumber(r, 1, NumWarehouses());
-  uint s = start_s = RandomNumber(r, 1, NumItems());
-
-  // read rows
-  ermia::varstr sv;
-  for (uint i = 0; i < g_microbench_rows; i++) {
-    const stock::key k_s(w, s);
-    DLOG(INFO) << "rd " << w << " " << s;
-    rc = rc_t{RC_INVALID};
-    tbl_stock(w)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_s)), k_s), sv);
-    TryCatchCoro(rc);
-
-    if (++s > NumItems()) {
-      s = 1;
-      if (++w > NumWarehouses()) w = 1;
-    }
-  }
-
-  // now write, in the same read-set
-  uint n_write_rows = g_microbench_wr_rows;
-  for (uint i = 0; i < n_write_rows; i++) {
-    // generate key
-    uint row_nr = RandomNumber(
-        r, 1, n_write_rows + 1);  // XXX. do we need overlap checking?
-
-    // index starting with 1 is a pain with %, starting with 0 instead:
-    // convert row number to (w, s) tuple
-    const uint idx =
-        (start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems();
-    const uint ww = idx / NumItems() + 1;
-    const uint ss = idx % NumItems() + 1;
-
-    DLOG(INFO) << (ww - 1) * NumItems() + ss - 1;
-    DLOG(INFO) << ((start_w - 1) * NumItems() + start_s - 1 + row_nr) %
-                       (NumItems() * (NumWarehouses()));
-    ASSERT((ww - 1) * NumItems() + ss - 1 < NumItems() * NumWarehouses());
-    ASSERT((ww - 1) * NumItems() + ss - 1 ==
-           ((start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems()) %
-               (NumItems() * (NumWarehouses())));
-
-    // TODO. more plausible update needed
-    const stock::key k_s(ww, ss);
-    DLOG(INFO) << "wr " << ww << " " << ss << " row_nr=" << row_nr;
-
-    stock::value v;
-    v.s_quantity = RandomNumber(r, 10, 100);
-    v.s_ytd = 0;
-    v.s_order_cnt = 0;
-    v.s_remote_cnt = 0;
-
-#ifndef NDEBUG
-    checker::SanityCheckStock(&k_s);
-#endif
-    rc = tbl_stock(ww)->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s),
-                                     Encode(str(arenas[idx], Size(v)), v));
-    TryCatchCoro(rc);
-  }
-
-  DLOG(INFO) << "micro-random finished";
-#ifndef NDEBUG
-  abort();
-#endif
-
-  rc = db->Commit(txn);
-  TryCatchCoro(rc);
   co_return {RC_TRUE};
 }
 

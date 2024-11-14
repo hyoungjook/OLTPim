@@ -183,53 +183,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
    * and cold transactions going with fully-nested coroutine.
    */
   ermia::coro::task<rc_t> txn_read(ermia::transaction *txn, uint32_t idx) {
-    for (int j = 0; j < FLAGS_ycsb_ops_per_tx; ++j) {
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-
-      // TODO(tzwang): add read/write_all_fields knobs
-      rc_t rc = rc_t{RC_INVALID};
-      if (!ermia::config::index_probe_only) {
-        if (j < FLAGS_ycsb_cold_ops_per_tx) {
-          ermia::varstr &k = GenerateKey(txn, false);
-          rc = co_await table_index->task_GetRecord(txn, k, v);
-        } else {
-          ermia::varstr &k = GenerateKey(txn, true);
-          rc = co_await table_index->task_GetRecord(txn, k, v);  // Read
-        }
-      } else {
-        // auto &k = GenerateKey(txn, true);
-        ermia::varstr &k = str(arenas[idx], sizeof(ycsb_kv::value));
-        new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
-        BuildKey(rng_gen_key(true), k);
-
-        ermia::OID oid = 0;
-        ermia::ConcurrentMasstree::versioned_node_t sinfo;
-        ermia::ConcurrentMasstree::threadinfo ti(0);
-        rc = (co_await table_index->GetMasstree().search_task(k, oid, ti, &sinfo)) ? RC_TRUE : RC_FALSE;
-      }
-
-      if (txn->is_forced_abort()) {
-        db->Abort(txn);
-        co_return {RC_ABORT_USER};
-      }
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
-#else
-      // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(ermia::config::index_probe_only || *(char *)v.data() == 'a');
-#endif
-
-      if (!ermia::config::index_probe_only) {
-        memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
-      }
-    }
-
-    if (!ermia::config::index_probe_only) {
-      TryCatchCoro(db->Commit(txn));
-    }
-
+    ALWAYS_ASSERT(false);
     co_return {RC_TRUE};
   }
 
@@ -260,7 +214,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
+      TryCatchOltpim(rc);
 #else
       // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
@@ -274,7 +228,8 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     }
 
     if (!ermia::config::index_probe_only) {
-      TryCatchCoro(db->Commit(txn));
+      rc_t rc = co_await db->Commit(txn);
+      TryCatchOltpim(rc);
     }
 
     co_return {RC_TRUE};
@@ -285,225 +240,28 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
    * and cold transactions going with fully-nested coroutine.
    */
   ermia::coro::task<rc_t> txn_remote_read(ermia::transaction *txn, uint32_t idx) {
-    for (int j = 0; j < FLAGS_ycsb_ops_per_tx; ++j) {
-      // ermia::varstr &v = str(sizeof(ycsb_kv::value));
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-
-      // TODO(tzwang): add read/write_all_fields knobs
-      rc_t rc = rc_t{RC_INVALID};
-      if (!ermia::config::index_probe_only) {
-        auto &k = GenerateKey(txn, true);
-        uint64_t timer_start = txn->rdtsc();
-        while (txn->rdtsc() - timer_start / (3.1 * 1e3) < 5) {
-          co_await suspend_always{};
-        }
-        rc = co_await table_index->task_GetRecord(txn, k, v);  // Read
-      } else {
-        ermia::varstr &k = str(arenas[idx], sizeof(ycsb_kv::value));
-        new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
-        BuildKey(rng_gen_key(true), k);
-
-        ermia::OID oid = 0;
-        ermia::ConcurrentMasstree::versioned_node_t sinfo;
-        ermia::ConcurrentMasstree::threadinfo ti(0);
-        rc = (co_await table_index->GetMasstree().search_task(k, oid, ti, &sinfo)) ? RC_TRUE : RC_FALSE;
-      }
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
-#else
-      // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(ermia::config::index_probe_only || *(char *)v.data() == 'a');
-#endif
-
-      if (!ermia::config::index_probe_only) {
-        memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
-        ALWAYS_ASSERT(*(char *)v.data() == 'a');
-      }
-    }
-
-    if (!ermia::config::index_probe_only) {
-      TryCatchCoro(db->Commit(txn));
-    }
-
+    ALWAYS_ASSERT(false);
     co_return {RC_TRUE};
   }
 
   // Read-modify-write transaction with context-switch using simple coroutine
   ermia::coro::task<rc_t> txn_rmw(ermia::transaction *txn, uint32_t idx) {
-    for (int i = 0; i < FLAGS_ycsb_ops_per_tx; ++i) {
-      ermia::varstr &k = GenerateKey(txn, true);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      rc_t rc = rc_t{RC_INVALID};
-
-      rc = co_await table_index->task_GetRecord(txn, k, v);
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
-#else
-      // Under SI this must succeed
-      LOG_IF(FATAL, rc._val != RC_TRUE);
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(*(char*)v.data() == 'a');
-#endif
-
-      ASSERT(v.size() == sizeof(ycsb_kv::value));
-      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
-
-      // Re-initialize the value structure to use my own allocated memory -
-      // DoTupleRead will change v.p to the object's data area to avoid memory
-      // copy (in the read op we just did).
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
-      new (v.data()) ycsb_kv::value("a");
-      rc = co_await table_index->task_UpdateRecord(txn, k, v);  // Modify-write
-
-      TryCatchCoro(rc);
-    }
-
-    for (int i = 0; i < FLAGS_ycsb_rmw_additional_reads; ++i) {
-      bool hot;
-      if (i < FLAGS_ycsb_cold_ops_per_tx) {
-        hot = false;
-      } else {
-        hot = true;
-      }
-      ermia::varstr &k = GenerateKey(txn, hot);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      rc_t rc = rc_t{RC_INVALID};
-
-      rc = co_await table_index->task_GetRecord(txn, k, v);
-
-      if (txn->is_forced_abort()) {
-        db->Abort(txn);
-        co_return {RC_ABORT_USER};
-      }
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
-#else
-      // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(*(char*)v.data() == 'a');
-#endif
-
-      ASSERT(v.size() == sizeof(ycsb_kv::value));
-      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
-    }
-#ifndef CORO_BATCH_COMMIT
-    TryCatchCoro(db->Commit(txn));
-#endif
+    ALWAYS_ASSERT(false);
     co_return {RC_TRUE};
   }
 
   ermia::coro::task<rc_t> txn_hot_rmw(ermia::transaction *txn, uint32_t idx) {
-    for (int i = 0; i < FLAGS_ycsb_ops_per_tx; ++i) {
-      ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      rc_t rc = rc_t{RC_INVALID};
-
-      rc = co_await table_index->task_GetRecord(txn, k, v);
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
-#else
-      // Under SI this must succeed
-      LOG_IF(FATAL, rc._val != RC_TRUE);
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(*(char*)v.data() == 'a');
-#endif
-      ASSERT(v.size() == sizeof(ycsb_kv::value));
-      // Re-initialize the value structure to use my own allocated memory -
-      // DoTupleRead will change v.p to the object's data area to avoid memory
-      // copy (in the read op we just did).
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
-      new (v.data()) ycsb_kv::value("a");
-      rc = co_await table_index->task_UpdateRecord(txn, k, v);  // Modify-write
-      TryCatchCoro(rc);
-    }
-
-    for (int i = 0; i < FLAGS_ycsb_rmw_additional_reads; ++i) {
-      ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      rc_t rc = rc_t{RC_INVALID};
-
-      rc = co_await table_index->task_GetRecord(txn, k, v);
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);
-#else
-      // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(*(char*)v.data() == 'a');
-#endif
-
-      ASSERT(v.size() == sizeof(ycsb_kv::value));
-      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
-    }
-#ifndef CORO_BATCH_COMMIT
-    TryCatchCoro(db->Commit(txn));
-#endif
+    ALWAYS_ASSERT(false);
     co_return {RC_TRUE};
   }
 
   ermia::coro::task<rc_t> txn_insert(ermia::transaction *txn, uint32_t idx) {
-    for (uint64_t i = 0; i < FLAGS_ycsb_ins_per_tx; ++i) {
-      auto &k = GenerateNewKey(txn);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      *(char *)v.p = 'a';
-
-      rc_t rc = rc_t{RC_INVALID};
-      rc = co_await table_index->task_InsertRecord(txn, k, v);
-    }
-
-    TryCatchCoro(db->Commit(txn));
-
+    ALWAYS_ASSERT(false);
     co_return {RC_TRUE};
   }
 
   ermia::coro::task<rc_t> txn_cold_update(ermia::transaction *txn, uint32_t idx) {
-    for (int i = 0; i < FLAGS_ycsb_update_per_tx; ++i) {
-      if (i < FLAGS_ycsb_cold_ops_per_tx) {
-        ermia::varstr &k = GenerateKey(txn, false);
-        ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-        rc_t rc = rc_t{RC_INVALID};
-
-        rc = co_await table_index->task_GetRecord(txn, k, v);
-
-        if (txn->is_forced_abort()) {
-          db->Abort(txn);
-          co_return {RC_ABORT_USER};
-        }
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-        TryCatchCoro(rc);
-#else
-        // Under SI this must succeed
-        ALWAYS_ASSERT(rc._val == RC_TRUE);
-        ASSERT(*(char*)v.data() == 'a');
-#endif
-        ASSERT(v.size() == sizeof(ycsb_kv::value));
-
-        k = GenerateKey(txn);
-        // Re-initialize the value structure to use my own allocated memory -
-        // DoTupleRead will change v.p to the object's data area to avoid memory
-        // copy (in the read op we just did).
-        new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
-        new (v.data()) ycsb_kv::value("a");
-        rc = co_await table_index->task_UpdateRecord(txn, k, v);  // Modify-write
-        TryCatchCoro(rc);
-      } else {
-        ermia::varstr &k = GenerateKey(txn);
-        ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-        new (v.data()) ycsb_kv::value("a");
-        auto rc = co_await table_index->task_UpdateRecord(txn, k, v);  // Modify-write
-        TryCatchCoro(rc);
-      }
-    }
-
-#ifndef CORO_BATCH_COMMIT
-    TryCatchCoro(db->Commit(txn));
-#endif
+    ALWAYS_ASSERT(false);
     co_return {RC_TRUE};
   }
 
@@ -513,11 +271,12 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       new (v.data()) ycsb_kv::value("a");
       uint64_t pim_key = rng_gen_key(true);
       auto rc = co_await table_index->pim_UpdateRecord(txn, pim_key, v);
-      TryCatchCoro(rc);
+      TryCatchOltpim(rc);
     }
 
 #ifndef CORO_BATCH_COMMIT
-    TryCatchCoro(db->Commit(txn));
+    rc_t rc = co_await db->Commit(txn);
+    TryCatchOltpim(rc);
 #endif
     co_return {RC_TRUE};
   }
@@ -656,7 +415,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
         rc_t rc = std::get<0>(task_queue[i]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
         if (!rc.IsAbort()) {
-          rc = db->Commit(&transactions[i]);
+          rc = co_await db->Commit(&transactions[i]);
         }
 #endif
         finish_workload(rc, task_workload_idxs[i], ts[i]);
@@ -793,7 +552,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
 
 #ifdef CORO_BATCH_COMMIT
           if (!rc.IsAbort()) {
-            rc = db->Commit(&transactions[coro_task_id]);
+            rc = co_await db->Commit(&transactions[coro_task_id]);
           }
 #endif
           finish_workload(rc, task_workload_idxs[coro_task_id], ts[coro_task_id]);
@@ -823,7 +582,7 @@ coldq:
               rc_t rc = std::get<0>(cold_queue[cold_queue_idx]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
               if (!rc.IsAbort()) {
-                rc = db->Commit(&transactions[coro_task_id]);
+                rc = co_await db->Commit(&transactions[coro_task_id]);
               }
 #endif
               finish_workload(rc, task_workload_idxs[coro_task_id], ts[coro_task_id]);

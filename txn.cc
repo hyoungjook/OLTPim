@@ -103,7 +103,7 @@ void transaction::uninitialize() {
   TXN::xid_free(xid);  // must do this after epoch_exit, which uses xc.end
 }
 
-void transaction::Abort() {
+COMMIT_RET_TYPE transaction::Abort() {
   // Mark the dirty tuple as invalid, for oid_get_version to
   // move on more quickly.
   volatile_write(xc->state, TXN::TXN_ABRTD);
@@ -160,17 +160,20 @@ void transaction::Abort() {
   }
   // TODO remove waiting
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
-    while (!oltpim::engine::g_engine.is_done(&reqs[i]));
+    while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
+      co_await std::suspend_always{};
+    }
   }
 #endif
+  COMMIT_RETURN {RC_TRUE};
 }
 
-rc_t transaction::commit() {
+COMMIT_RET_TYPE transaction::commit() {
   ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE);
   volatile_write(xc->state, TXN::TXN_COMMITTING);
   rc_t ret;
 #if defined(OLTPIM)
-  ret = oltpim_commit();
+  ret = co_await oltpim_commit();
 #elif defined(SSN) || defined(SSI)
   // Safe snapshot optimization for read-only transactions:
   // Use the begin ts as cstamp if it's a read-only transaction
@@ -214,14 +217,14 @@ rc_t transaction::commit() {
     }
   }
 
-  return ret;
+  COMMIT_RETURN ret;
 }
 
 #if defined(OLTPIM)
-rc_t transaction::oltpim_commit() {
+ermia::coro::task<rc_t> transaction::oltpim_commit() {
   if (!log && ((flags & TXN_FLAG_READ_ONLY) || pim_write_set.size() == 0)) {
     volatile_write(xc->state, TXN::TXN_CMMTD);
-    return rc_t{RC_TRUE};
+    co_return {RC_TRUE};
   }
 
   ASSERT(log);
@@ -271,14 +274,16 @@ rc_t transaction::oltpim_commit() {
 
   // TODO remove waiting
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
-    while (!oltpim::engine::g_engine.is_done(&reqs[i]));
+    while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
+      co_await std::suspend_always{};
+    }
   }
   
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
   // This is when (committed) tuple data are made visible to readers
   volatile_write(xc->state, TXN::TXN_CMMTD);
-  return rc_t{RC_TRUE};
+  co_return {RC_TRUE};
 }
 #endif
 

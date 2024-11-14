@@ -74,6 +74,18 @@ public:
     return buf;
   }
 
+#if defined(OLTPIM)
+  inline ermia::coro::task<rc_t> Commit(transaction *t) {
+    rc_t rc = co_await t->commit();
+    co_return rc;
+  }
+  
+  inline ermia::coro::task<rc_t> Abort(transaction *t) {
+    co_await t->Abort();
+    t->uninitialize();
+    co_return {RC_TRUE};
+  }
+#else
   inline rc_t Commit(transaction *t) {
     rc_t rc = t->commit();
     return rc;
@@ -83,6 +95,7 @@ public:
     t->Abort();
     t->uninitialize();
   }
+#endif
 };
 
 // User-facing table abstraction, operates on OIDs only
