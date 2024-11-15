@@ -64,10 +64,14 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       LOG(FATAL) << "Not implemented";
     }
 
+    LOG_IF(FATAL, ops_per_hot_txn_const != FLAGS_ycsb_ops_per_hot_tx)
+        << "Recompile with matching ops_per_hot_txn_const in ycsb-oltpim.cc";
+
     LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro) << "Read txn type must be hybrid-coro";
 
     if (ycsb_workload.read_percent()) {
-      w.push_back(workload_desc("0-HotRead", FLAGS_ycsb_hot_tx_percent * double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnHotRead));
+      w.push_back(workload_desc("0-HotRead", FLAGS_ycsb_hot_tx_percent * double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr,
+        (FLAGS_ycsb_oltpim_multiget ? TxnHotReadMultiGet : TxnHotRead)));
       w.push_back(workload_desc("1-ColdRead", (1 - FLAGS_ycsb_hot_tx_percent - FLAGS_ycsb_remote_tx_percent) * double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnRead));
       w.push_back(workload_desc("2-RemoteRead", FLAGS_ycsb_remote_tx_percent * double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnRemoteRead));
     }
@@ -91,17 +95,14 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   }
 
   workload_desc_vec get_hot_workload() const {
+    ALWAYS_ASSERT(false);
     workload_desc_vec w;
-
-    LOG_IF(FATAL, ops_per_hot_txn_const != FLAGS_ycsb_ops_per_hot_tx)
-        << "Recompile with matching ops_per_hot_txn_const in ycsb-oltpim.cc";
 
     LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro)
         << "Read txn type must be hybrid-coro";
 
     if (ycsb_workload.read_percent()) {
-      w.push_back(workload_desc("0-HotRead", 1, nullptr, nullptr, 
-        (FLAGS_ycsb_oltpim_multiget ? TxnHotReadMultiGet : TxnHotRead)));
+      w.push_back(workload_desc("0-HotRead", 1, nullptr, nullptr, TxnHotRead));
       w.push_back(workload_desc("1-ColdRead", 0, nullptr, nullptr, TxnRead));
       w.push_back(workload_desc("2-RemoteRead", 0, nullptr, nullptr, TxnRemoteRead));
     }
@@ -257,7 +258,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
         ALWAYS_ASSERT(false);
       }
     }
-    for (int j = 0; j < FLAGS_ycsb_cold_ops_per_tx; ++j) {
+    for (int j = 0; j < FLAGS_ycsb_ops_per_hot_tx; ++j) {
       ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
       rc_t rc = rc_t{RC_INVALID};
       rc = co_await table_index->pim_GetRecordEnd(txn, v, &reqs[j]);
