@@ -87,30 +87,42 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
   uint64_t kBatchSize = 256;
 
   // Load hot records.
-  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-  for (uint64_t i = 0; i < hot_to_insert; ++i) {
-    ermia::varstr &k = str(sizeof(ycsb_kv::key));
-    BuildKey(hot_start_key + i, k);
+  ermia::transaction *txn;
+  for (uint64_t i_begin = 0; i_begin < hot_to_insert; i_begin += kBatchSize) {
+    txn = db->NewTransaction(0, *arena, txn_buf());
+    const uint64_t num = std::min(kBatchSize, hot_to_insert - i_begin);
+#if defined(OLTPIM)
+    uint16_t pim_ids[kBatchSize];
+    args_insert_t args[kBatchSize];
+    rets_insert_t rets[kBatchSize];
+    oltpim::request reqs[kBatchSize];
+    auto *const main_index = (ermia::ConcurrentMasstreeIndex*)tbl;
+#endif
+    for (uint64_t j = 0; j < num; ++j) {
+      const uint64_t i = i_begin + j;
+      ermia::varstr &k = str(sizeof(ycsb_kv::key));
+      BuildKey(hot_start_key + i, k);
 
-    ermia::varstr &v = str(sizeof(ycsb_kv::value));
-    new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
-    *(char *)v.p = 'a';
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
+      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
+      *(char *)v.p = 'a';
 
 #if defined(OLTPIM)
-      uint64_t pim_key = hot_start_key + i;
-      TryVerifyStrict(sync_wait_oltpim_coro(((ermia::ConcurrentMasstreeIndex*)tbl)->pim_InsertRecord(txn, pim_key, v)));
-#elif defined(NESTED_COROUTINE)
+      const uint64_t pk = hot_start_key + i;
+      main_index->pim_InsertRecordBegin(txn, pk, v, &args[j], &rets[j], &reqs[j], &pim_ids[j]);
+    }
+    for (uint64_t j = 0; j < num; ++j) {
+      TryVerifyStrict(sync_wait_oltpim_coro(main_index->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j])));
+#else
+#if defined(NESTED_COROUTINE)
       TryVerifyStrict(sync_wait_coro(tbl->InsertRecord(txn, k, v)));
 #else
       TryVerifyStrict(tbl->InsertRecord(txn, k, v));
 #endif
+#endif // !defined(OLTPIM)
 
-    if ((i + 1) % kBatchSize == 0 || i == hot_to_insert - 1) {
-      TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
-      if (i != hot_to_insert - 1) {
-        txn = db->NewTransaction(0, *arena, txn_buf());
-      }
     }
+    TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
   }
 
   // Load cold records.
@@ -169,6 +181,10 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
 
     if ((i + 1) % kBatchSize == 0 || i == hot_to_insert - 1) {
       TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+      #if defined(OLTPIM)
+      // TODO for now skip verification after some number
+      if (i > 1000000) break;
+      #endif
       if (i != hot_to_insert - 1) {
         txn = db->NewTransaction(0, *arena, txn_buf());
       }
