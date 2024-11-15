@@ -49,6 +49,48 @@ void ConcurrentMasstreeIndex::assign_index_id() {
   ++g_concurrent_masstree_index_id;
 }
 
+void
+ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t &key,
+    void *arg_, void *ret_, void *req_) {
+  ALWAYS_ASSERT(IsPrimary());
+  auto *xc = t->xc;
+
+  auto *arg = (args_get_t*)arg_;
+  arg->index_id = index_id;
+  arg->oid_query = 0;
+  arg->key = key;
+  arg->xid = xc->owner._val;
+  arg->csn = xc->begin;
+  auto *req = (oltpim::request*)req_;
+  *req = oltpim::request(
+    request_type_get, arg_, ret_, sizeof(args_get_t), req_get_rets_size(arg)
+  );
+  int pim_id = pim_id_of(key);
+  oltpim::engine::g_engine.push(pim_id, req);
+}
+
+ermia::coro::task<rc_t>
+ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *req_) {
+  auto *req = (oltpim::request*)req_;
+  while (!oltpim::engine::g_engine.is_done(req)) {
+    co_await std::suspend_always{};
+  }
+  auto *ret = (rets_get_t*)req->rets;
+  auto status = ret->status;
+  CHECK_VALID_STATUS(status);
+  rc_t rc;
+  if (status != STATUS_SUCCESS) {
+    rc = (status == STATUS_FAILED) ? rc_t{RC_FALSE} : rc_t{RC_ABORT_SI_CONFLICT};
+    co_return rc;
+  }
+  fat_ptr obj = {ret->value};
+  dbtuple *tuple = ((Object*)obj.offset())->GetPinnedTuple(t);
+  value.p = tuple->get_value_start();
+  value.l = tuple->size;
+  rc = tuple->size > 0 ? rc_t{RC_TRUE} : rc_t{RC_FALSE};
+  co_return rc;
+}
+
 ermia::coro::task<rc_t>
 ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t &key, varstr &value) {
   auto *xc = t->xc;

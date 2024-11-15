@@ -236,6 +236,8 @@ public:
 
   // multi-get style interface
   // the user should allocate arg, ret, req of proper type
+  void pim_GetRecordBegin(transaction *t, const uint64_t &key, void *arg, void *ret, void *req);
+  ermia::coro::task<rc_t> pim_GetRecordEnd(transaction *t, varstr &value, void *req);
   void pim_InsertRecordBegin(transaction *t, const uint64_t &key, varstr &value,
                              void *arg, void *ret, void *req, uint16_t *pim_id);
   ermia::coro::task<rc_t> pim_InsertRecordEnd(transaction *t, void *req, uint16_t pim_id, uint64_t *oid = nullptr);

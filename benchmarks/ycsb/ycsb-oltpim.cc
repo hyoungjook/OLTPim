@@ -5,10 +5,15 @@
 #include "../dbtest.h"
 #include "ycsb.h"
 #include "unordered_set"
+#include <gflags/gflags.h>
+
+DEFINE_bool(ycsb_oltpim_multiget, false, "Use multiget for YCSB oltpim benchmark");
 
 extern YcsbWorkload ycsb_workload;
 extern ReadTransactionType g_read_txn_type;
 
+// You should re-compile this if you want different ops_per_hot_txn
+static constexpr int ops_per_hot_txn_const = 10;
 class ycsb_oltpim_worker : public ycsb_base_worker {
  public:
   ycsb_oltpim_worker(
@@ -88,11 +93,15 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   workload_desc_vec get_hot_workload() const {
     workload_desc_vec w;
 
+    LOG_IF(FATAL, ops_per_hot_txn_const != FLAGS_ycsb_ops_per_hot_tx)
+        << "Recompile with matching ops_per_hot_txn_const in ycsb-oltpim.cc";
+
     LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro)
         << "Read txn type must be hybrid-coro";
 
     if (ycsb_workload.read_percent()) {
-      w.push_back(workload_desc("0-HotRead", 1, nullptr, nullptr, TxnHotRead));
+      w.push_back(workload_desc("0-HotRead", 1, nullptr, nullptr, 
+        (FLAGS_ycsb_oltpim_multiget ? TxnHotReadMultiGet : TxnHotRead)));
       w.push_back(workload_desc("1-ColdRead", 0, nullptr, nullptr, TxnRead));
       w.push_back(workload_desc("2-RemoteRead", 0, nullptr, nullptr, TxnRemoteRead));
     }
@@ -107,6 +116,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   }
 
   workload_desc_vec get_remote_workload() const {
+    ALWAYS_ASSERT(false);
     workload_desc_vec w;
 
     LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro)
@@ -126,6 +136,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   }
 
   workload_desc_vec get_cold_workload() const {
+    ALWAYS_ASSERT(false);
     workload_desc_vec w;
 
     LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro)
@@ -152,6 +163,10 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
 
   static ermia::coro::task<rc_t> TxnHotRead(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
     return static_cast<ycsb_oltpim_worker *>(w)->txn_hot_read(txn, idx);
+  }
+
+  static ermia::coro::task<rc_t> TxnHotReadMultiGet(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
+    return static_cast<ycsb_oltpim_worker *>(w)->txn_hot_read_multiget(txn, idx);
   }
 
   static ermia::coro::task<rc_t> TxnRemoteRead(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
@@ -199,18 +214,10 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       if (!ermia::config::index_probe_only) {
-      uint64_t pim_key = rng_gen_key(true);
-      rc = co_await table_index->pim_GetRecord(txn, pim_key, v);
+        uint64_t pim_key = rng_gen_key(true);
+        rc = co_await table_index->pim_GetRecord(txn, pim_key, v);
       } else {
-        //ermia::varstr &k = GenerateKey(txn, true);
-        ermia::varstr &k = str(arenas[idx], sizeof(ycsb_kv::value));
-        new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
-        BuildKey(rng_gen_key(true), k);
-
-        ermia::OID oid = 0;
-        ermia::ConcurrentMasstree::versioned_node_t sinfo;
-        ermia::ConcurrentMasstree::threadinfo ti(0);
-        rc = (co_await table_index->GetMasstree().search_task(k, oid, ti, &sinfo)) ? RC_TRUE : RC_FALSE;
+        ALWAYS_ASSERT(false);
       }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
@@ -221,6 +228,47 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       ASSERT(ermia::config::index_probe_only || *(char *)v.data() == 'a');
 #endif
 
+      if (!ermia::config::index_probe_only) {
+        memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
+        ALWAYS_ASSERT(*(char *)v.data() == 'a');
+      }
+    }
+
+    if (!ermia::config::index_probe_only) {
+      rc_t rc = co_await db->Commit(txn);
+      TryCatchOltpim(rc);
+    }
+
+    co_return {RC_TRUE};
+  }
+
+  ermia::coro::task<rc_t> txn_hot_read_multiget(ermia::transaction *txn, uint32_t idx) {
+    args_get_t args[ops_per_hot_txn_const];
+    rets_get_t rets[ops_per_hot_txn_const];
+    oltpim::request reqs[ops_per_hot_txn_const];
+    for (int j = 0; j < FLAGS_ycsb_ops_per_hot_tx; ++j) {
+      // TODO(tzwang): add read/write_all_fields knobs
+      
+      if (!ermia::config::index_probe_only) {
+        uint64_t pim_key = rng_gen_key(true);
+        table_index->pim_GetRecordBegin(txn, pim_key, &args[j], &rets[j], &reqs[j]);
+      }
+      else {
+        ALWAYS_ASSERT(false);
+      }
+    }
+    for (int j = 0; j < FLAGS_ycsb_cold_ops_per_tx; ++j) {
+      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
+      rc_t rc = rc_t{RC_INVALID};
+      rc = co_await table_index->pim_GetRecordEnd(txn, v, &reqs[j]);
+
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatchOltpim(rc);
+#else
+      // Under SI this must succeed
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ASSERT(ermia::config::index_probe_only || *(char *)v.data() == 'a');
+#endif
       if (!ermia::config::index_probe_only) {
         memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
         ALWAYS_ASSERT(*(char *)v.data() == 'a');
