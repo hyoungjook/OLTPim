@@ -112,8 +112,10 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   DLOG(INFO) << "Log " << id << ": new segment " << segments.size() - 1 << ", start lsn " << current_lsn;
 
   // Initialize io_uring
-  int ret = io_uring_queue_init(2, &ring, 0);
-  LOG_IF(FATAL, ret != 0) << "Error setting up io_uring: " << strerror(ret);
+  if (!config::null_log_device) {
+    int ret = io_uring_queue_init(2, &ring, 0);
+    LOG_IF(FATAL, ret != 0) << "Error setting up io_uring: " << strerror(ret);
+  }
 
   // Initialize committer
   tcommitter.initialize(log_id);
@@ -128,7 +130,9 @@ void tls_log::uninitialize() {
     issue_flush(active_logbuf, logbuf_offset);
     poll_flush();
   }
-  io_uring_queue_exit(&ring);
+  if (!config::null_log_device) {
+    io_uring_queue_exit(&ring);
+  }
 }
 
 void tls_log::enqueue_flush() {
