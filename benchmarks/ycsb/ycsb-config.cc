@@ -162,33 +162,40 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
   while (loaders_barrier);
 
   // Verify inserted values
-  txn = db->NewTransaction(0, *arena, txn_buf());
-  for (uint64_t i = 0; i < hot_to_insert; ++i) {
-    rc_t rc = rc_t{RC_INVALID};
-    ermia::varstr &k = str(sizeof(ycsb_kv::key));
-    BuildKey(hot_start_key + i, k);
-    ermia::varstr &v = str(0);
+  for (uint64_t i_begin = 0; i_begin < hot_to_insert; i_begin += kBatchSize) {
+    txn = db->NewTransaction(0, *arena, txn_buf());
+    const uint64_t num = std::min(kBatchSize, hot_to_insert - i_begin);
 #if defined(OLTPIM)
-    uint64_t pim_key = hot_start_key + i;
-    rc = sync_wait_oltpim_coro(((ermia::ConcurrentMasstreeIndex*)tbl)->pim_GetRecord(txn, pim_key, v));
-#elif defined(NESTED_COROUTINE)
-    sync_wait_coro(tbl->GetRecord(txn, rc, k, v));
-#else
-    tbl->GetRecord(txn, rc, k, v);
+    args_get_t args[kBatchSize];
+    rets_get_t rets[kBatchSize];
+    oltpim::request reqs[kBatchSize];
+    auto *const main_index = (ermia::ConcurrentMasstreeIndex*)tbl;
 #endif
-    ALWAYS_ASSERT(*(char *)v.data() == 'a');
-    TryVerifyStrict(rc);
+    for (uint64_t j = 0; j < num; ++j) {
+      const uint64_t i = i_begin + j;
+      ermia::varstr &k = str(sizeof(ycsb_kv::key));
+      BuildKey(hot_start_key + i, k);
 
-    if ((i + 1) % kBatchSize == 0 || i == hot_to_insert - 1) {
-      TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
-      #if defined(OLTPIM)
-      // TODO for now skip verification after some number
-      if (i > 1000000) break;
-      #endif
-      if (i != hot_to_insert - 1) {
-        txn = db->NewTransaction(0, *arena, txn_buf());
-      }
+#if defined(OLTPIM)
+      uint64_t pk = hot_start_key + i;
+      main_index->pim_GetRecordBegin(txn, pk, &args[j], &rets[j], &reqs[j]);
     }
+    for (uint64_t j = 0; j < num; ++j) {
+      ermia::varstr &v = str(0);
+      TryVerifyStrict(sync_wait_oltpim_coro(main_index->pim_GetRecordEnd(txn, v, &reqs[j])));
+#else
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::varstr &v = str(0);
+#if defined(NESTED_COROUTINE)
+      sync_wait_coro(tbl->GetRecord(txn, rc, k, v));
+#else
+      tbl->GetRecord(txn, rc, k, v);
+#endif
+      TryVerifyStrict(rc);
+#endif // !defined(OLTPIM)
+      ALWAYS_ASSERT(*(char *)v.data() == 'a');
+    }
+    TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
   }
 
   if (cold_to_insert) {
