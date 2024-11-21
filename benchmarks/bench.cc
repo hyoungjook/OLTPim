@@ -152,10 +152,6 @@ void bench_runner::run() {
   // shipped logs)
   ermia::volatile_write(ermia::config::state, ermia::config::kStateLoading);
   std::vector<bench_loader *> loaders = make_loaders();
-#if defined(OLTPIM)
-  // ignore numa on loading to avoid deadlock
-  oltpim::engine::g_engine.set_numa_ignore(true);
-#endif
   {
     util::scoped_timer t("dataloading", ermia::config::verbose);
     uint32_t done = 0;
@@ -201,10 +197,6 @@ void bench_runner::run() {
 
 
   }
-#if defined(OLTPIM)
-  oltpim::engine::g_engine.set_numa_ignore(false);
-#endif
-
   // FIXME:SSI safesnap to work with CSN.
   ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::dlog::current_csn);
   ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
@@ -365,11 +357,6 @@ void bench_runner::start_measurement() {
     while (slept < ermia::config::benchmark_seconds) {
       gather_stats();
     }
-
-#if defined(OLTPIM)
-    // drain all left requests
-    oltpim::engine::g_engine.set_numa_ignore(true);
-#endif
 
     running = false;
   } else {
