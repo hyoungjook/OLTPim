@@ -5,6 +5,7 @@
 #include "engine.h"
 #include "txn.h"
 #include "sm-table.h"
+#include "sm-alloc.h"
 #include "engine.hpp"
 #include "interface.h"
 
@@ -23,7 +24,8 @@ void register_index(ConcurrentMasstreeIndex *index) {
 
 void finalize_index_setup() {
   oltpim::engine::config config = {
-    .num_ranks_per_numa_node = (int)FLAGS_oltpim_num_ranks_per_numa_node
+    .num_ranks_per_numa_node = (int)FLAGS_oltpim_num_ranks_per_numa_node,
+    .alloc_fn = ermia::MM::allocate
   };
   oltpim::engine::g_engine.init(config);
   uint32_t num_pims = oltpim::engine::g_engine.num_pims();
