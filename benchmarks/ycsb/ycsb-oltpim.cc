@@ -244,15 +244,13 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   }
 
   ermia::coro::task<rc_t> txn_hot_read_multiget(ermia::transaction *txn, uint32_t idx) {
-    args_get_t args[ops_per_hot_txn_const];
-    rets_get_t rets[ops_per_hot_txn_const];
-    oltpim::request reqs[ops_per_hot_txn_const];
+    oltpim::request_get reqs[ops_per_hot_txn_const];
     for (int j = 0; j < FLAGS_ycsb_ops_per_hot_tx; ++j) {
       // TODO(tzwang): add read/write_all_fields knobs
       
       if (!ermia::config::index_probe_only) {
         uint64_t pim_key = rng_gen_key(true);
-        table_index->pim_GetRecordBegin(txn, pim_key, &args[j], &rets[j], &reqs[j]);
+        table_index->pim_GetRecordBegin(txn, pim_key, &reqs[j]);
       }
       else {
         ALWAYS_ASSERT(false);

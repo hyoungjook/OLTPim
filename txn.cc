@@ -143,19 +143,14 @@ COMMIT_RET_TYPE transaction::Abort() {
   }
 
 #else // defined(OLTPIM)
-  oltpim::request reqs[ermia::pim::write_set_t::kMaxEntries];
-  args_abort_t args[ermia::pim::write_set_t::kMaxEntries];
+  oltpim::request_abort reqs[ermia::pim::write_set_t::kMaxEntries];
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     auto &w = pim_write_set[i];
     if (w.entry._ptr != 0) MM::deallocate(w.entry);
     
     // abort to pim
-    auto &arg = args[i];
-    arg.xid = xid._val;
-    reqs[i] = oltpim::request(
-      request_type_abort, &arg, nullptr,
-      sizeof(args_abort_t), req_abort_rets_size(&arg)
-    );
+    auto &args = reqs[i].args;
+    args.xid = xid._val;
     oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
   }
   // TODO remove waiting
@@ -240,8 +235,7 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
   }
 
   // Post-commit
-  oltpim::request reqs[ermia::pim::write_set_t::kMaxEntries];
-  args_commit_t args[ermia::pim::write_set_t::kMaxEntries];
+  oltpim::request_commit reqs[ermia::pim::write_set_t::kMaxEntries];
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     auto &w = pim_write_set[i];
     dbtuple fake_tuple(0);
@@ -261,13 +255,9 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
 
     // commit to pim
-    auto &arg = args[i];
-    arg.xid = xid._val;
-    arg.csn = xc->end;
-    reqs[i] = oltpim::request(
-      request_type_commit, &arg, nullptr,
-      sizeof(args_commit_t), req_commit_rets_size(&arg)
-    );
+    auto &args = reqs[i].args;
+    args.xid = xid._val;
+    args.csn = xc->end;
     oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
   }
   ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);

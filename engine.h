@@ -22,6 +22,7 @@ using std::suspend_never;
 #if defined(OLTPIM)
 #include "oltpim.h"
 #include "engine.hpp"
+#include "interface_host.hpp"
 #endif
 
 namespace ermia {
@@ -236,13 +237,12 @@ public:
 
   // multi-get style interface
   // the user should allocate arg, ret, req of proper type
-  void pim_GetRecordBegin(transaction *t, const uint64_t &key, void *arg, void *ret, void *req);
+  void pim_GetRecordBegin(transaction *t, const uint64_t &key, void *req);
   ermia::coro::task<rc_t> pim_GetRecordEnd(transaction *t, varstr &value, void *req);
   void pim_InsertRecordBegin(transaction *t, const uint64_t &key, varstr &value,
-                             void *arg, void *ret, void *req, uint16_t *pim_id);
+                             void *req, uint16_t *pim_id);
   ermia::coro::task<rc_t> pim_InsertRecordEnd(transaction *t, void *req, uint16_t pim_id, uint64_t *oid = nullptr);
-  void pim_InsertOIDBegin(transaction *t, const uint64_t &key, uint64_t oid,
-                          void *arg, void *ret, void *req);
+  void pim_InsertOIDBegin(transaction *t, const uint64_t &key, uint64_t oid, void *req);
   ermia::coro::task<rc_t> pim_InsertOIDEnd(transaction *t, void *req);
 
 #endif

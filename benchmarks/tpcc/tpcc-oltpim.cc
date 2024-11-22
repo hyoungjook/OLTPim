@@ -8,7 +8,7 @@
 #include "tpcc-config.h"
 #include "tpcc-key64.h"
 #include "../../oltpim.h"
-#include "interface.h"
+#include "interface_host.hpp"
 
 /* pim scan callback */
 #define DECLARE_SCAN_RETS_SIZE(_1, name, _2, _3, _4, _5, \
@@ -25,33 +25,17 @@ class pim_static_limit_callback : public ermia::pim::PIMScanCallback {
   // compile-decided-size variables in the stack; so that
   // we can use them together with coroutines.
 private:
-  static constexpr int scan_rets_size_ = req_scan_rets_size(max_outs_per_interval_);
+  using request_scan = typename oltpim::request_scan<max_outs_per_interval_>::t;
+  request_scan scan_reqs[num_intervals_];
   static constexpr int num_secondary_reqs = (primary ? 0 : max_outs_per_interval_ * num_intervals_);
-  uint8_t scan_rets[scan_rets_size_ * num_intervals_];
-  union storage_type {
-    struct {
-      args_scan_t args[num_intervals_];
-      oltpim::request reqs[num_intervals_];
-    } scan;
-    struct {
-      args_get_t args[num_secondary_reqs];
-      rets_get_t rets[num_secondary_reqs];
-      oltpim::request reqs[num_secondary_reqs];
-    } get;
-  };
-  uint8_t storage_buf[sizeof(storage_type)];
-  const storage_type *storage = (storage_type*)&storage_buf;
+  oltpim::request_get get_reqs[num_secondary_reqs];
 
 public:
   uint32_t max_outs_per_interval() {return max_outs_per_interval_;}
   uint32_t num_intervals() {return num_intervals_;}
-  uint8_t *scan_args_storage() {return (uint8_t*)&storage->scan.args;}
-  uint8_t *scan_rets_storage() {return (uint8_t*)&scan_rets;}
-  uint32_t scan_rets_size() {return scan_rets_size_;}
-  uint8_t *scan_reqs_storage() {return (uint8_t*)&storage->scan.reqs;}
-  uint8_t *get_args_storage() {return (uint8_t*)&storage->get.args;}
-  uint8_t *get_rets_storage() {return (uint8_t*)&storage->get.rets;}
-  uint8_t *get_reqs_storage() {return (uint8_t*)&storage->get.reqs;}
+  void *scan_req_storage() {return (void*)&scan_reqs;}
+  size_t scan_req_storage_size() {return sizeof(request_scan);}
+  void *get_req_storage() {return (void*)&get_reqs;}
 
 public:
   std::vector<ermia::varstr> values;
