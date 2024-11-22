@@ -123,6 +123,7 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
     TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
   }
 
+#if !defined(OLTPIM)
   // Load cold records.
   if (cold_to_insert) {
     txn = db->NewTransaction(0, *arena, txn_buf());
@@ -148,6 +149,7 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
       }
     }
   }
+#endif
 
   uint32_t n = ++loaders_barrier;
   while (loaders_barrier != nloaders && !all_flushed);
@@ -194,6 +196,7 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
     TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
   }
 
+#if !defined(OLTPIM)
   if (cold_to_insert) {
     txn = db->NewTransaction(0, *arena, txn_buf());
   }
@@ -217,6 +220,7 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
       }
     }
   }
+#endif
 
   if (ermia::config::verbose) {
     std::cerr << "[INFO] loader " << loader_id << " loaded " << to_insert
