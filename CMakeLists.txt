@@ -57,6 +57,7 @@ elseif(${CMAKE_BUILD_TYPE} STREQUAL "RelWithDebInfo")
 else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include ${CMAKE_CURRENT_SOURCE_DIR}/masstree/config-release.h")
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+  #set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g3 -fno-omit-frame-pointer")
 endif()
 
 include_directories(dbcore)
