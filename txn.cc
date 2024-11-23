@@ -150,7 +150,7 @@ COMMIT_RET_TYPE transaction::Abort() {
     
     // abort to pim
     auto &args = reqs[i].args;
-    args.xid = xid._val;
+    args.xid = (xid._val) >> 16;
     oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
   }
   // TODO remove waiting
@@ -256,7 +256,7 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
 
     // commit to pim
     auto &args = reqs[i].args;
-    args.xid = xid._val;
+    args.xid = (xid._val) >> 16;
     args.csn = xc->end;
     oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
   }

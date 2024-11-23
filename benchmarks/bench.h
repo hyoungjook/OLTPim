@@ -377,6 +377,9 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
 }
 
 // No abort is allowed, usually for loading
-inline void TryVerifyStrict(rc_t rc) {
-  LOG_IF(FATAL, rc._val != RC_TRUE) << "Wrong return value " << rc._val;
+#define TryVerifyStrict(oper)                      \
+{                                                  \
+  rc_t r = oper;                                   \
+  LOG_IF(FATAL, r._val != RC_TRUE)                 \
+    << "Wrong return value " << r._val;            \
 }

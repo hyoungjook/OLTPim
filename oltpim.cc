@@ -60,7 +60,7 @@ ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t &key,
   args.index_id = index_id;
   args.oid_query = 0;
   args.key = key;
-  args.xid = xc->owner._val;
+  args.xid = (xc->owner._val) >> 16;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, req);
@@ -84,8 +84,7 @@ ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *r
   dbtuple *tuple = ((Object*)obj.offset())->GetPinnedTuple(t);
   value.p = tuple->get_value_start();
   value.l = tuple->size;
-  rc = tuple->size > 0 ? rc_t{RC_TRUE} : rc_t{RC_FALSE};
-  co_return rc;
+  co_return rc_t{RC_TRUE};
 }
 
 ermia::coro::task<rc_t>
@@ -98,7 +97,7 @@ ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t &key, vars
   args.index_id = index_id;
   args.oid_query = 0;
   args.key = key;
-  args.xid = xc->owner._val;
+  args.xid = (xc->owner._val) >> 16;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, &req);
@@ -114,7 +113,7 @@ ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t &key, vars
     args.index_id = ((ConcurrentMasstreeIndex*)table_descriptor->GetPrimaryIndex())->index_id;
     args.oid_query = 1;
     args.key = (uint64_t)local_oid;
-    args.xid = xc->owner._val;
+    args.xid = (xc->owner._val) >> 16;
     args.csn = xc->begin;
     // reuse req; already points to correct args and rets
     oltpim::engine::g_engine.push(pim_id, &req);
@@ -148,7 +147,7 @@ ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t &k
   args.index_id = index_id;
   args.key = key;
   args.value = new_obj._ptr;
-  args.xid = xc->owner._val;
+  args.xid = (xc->owner._val) >> 16;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, req);
@@ -195,7 +194,7 @@ ConcurrentMasstreeIndex::pim_InsertOIDBegin(transaction *t, const uint64_t &key,
   args.index_id = index_id;
   args.key = key;
   args.value = oid;
-  args.xid = xc->owner._val;
+  args.xid = (xc->owner._val) >> 16;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, req);
@@ -235,7 +234,7 @@ ConcurrentMasstreeIndex::pim_UpdateRecord(transaction *t, const uint64_t &key, v
   args.index_id = index_id;
   args.key = key;
   args.new_value = new_obj._ptr;
-  args.xid = xc->owner._val;
+  args.xid = (xc->owner._val) >> 16;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, &req);
@@ -264,7 +263,7 @@ ConcurrentMasstreeIndex::pim_RemoveRecord(transaction *t, const uint64_t &key) {
   auto &args = req.args;
   args.index_id = index_id;
   args.key = key;
-  args.xid = xc->owner._val;
+  args.xid = (xc->owner._val) >> 16;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, &req);
@@ -288,7 +287,7 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t &start_key, con
   rc_t rc;
   ASSERT(max_keys_per_interval <= callback.max_outs_per_interval() * callback.num_intervals());
   ASSERT(start_key <= end_key);
-  const uint64_t xid = xc->owner._val;
+  const uint64_t xid = (xc->owner._val) >> 16;
   const uint64_t csn = xc->begin;
 
   using request_scan_base = typename oltpim::request_scan<0>::t;
