@@ -29,18 +29,21 @@ void finalize_index_setup() {
   };
   oltpim::engine::g_engine.init(config);
   uint32_t num_pims = oltpim::engine::g_engine.num_pims();
+  uint32_t num_pims_per_numa = oltpim::engine::g_engine.num_pims_per_numa_node();
+  uint32_t num_numas = num_pims / num_pims_per_numa;
   std::uniform_int_distribution<uint32_t> rand_offset(0, num_pims - 1);
   for (auto *index: registered_indexes) {
-    index->set_num_pims(num_pims, rand_offset(rand_gen));
+    index->set_num_pims(num_numas, num_pims_per_numa, rand_offset(rand_gen));
   }
 }
 
-void set_index_partition_interval(const char *index_name, uint64_t interval) {
+void set_index_partition_interval(
+    const char *index_name, uint64_t pim_bits, uint64_t numa_bits) {
   ((ermia::ConcurrentMasstreeIndex*)
-    ermia::TableDescriptor::GetIndex(index_name))->set_key_interval(interval);
+    ermia::TableDescriptor::GetIndex(index_name))->set_key_interval(pim_bits, numa_bits);
 }
 
-}
+} // namespace pim
 
 static int g_concurrent_masstree_index_id = 0;
 static std::mutex g_concurrent_masstree_index_id_assign_mutex;
@@ -295,15 +298,16 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t &start_key, con
   const size_t scan_req_size = callback.scan_req_storage_size(); 
   const int pim_id_end = pim_id_of(end_key);
   int cnt = 0;
+  const uint64_t key_interval = (1UL << key_interval_pim_bits);
   for (
-      uint64_t begin_key = (start_key / key_partition_interval) * key_partition_interval;
-      begin_key <= end_key; begin_key += key_partition_interval, ++cnt) {
+      uint64_t begin_key = start_key & (~(key_interval - 1));
+      begin_key <= end_key; begin_key += key_interval, ++cnt) {
     auto *req = (request_scan_base*)&scan_req[scan_req_size * cnt];
     auto &args = req->args;
     args.max_outs = max_keys_per_interval;
     args.index_id = index_id;
     args.keys[0] = max(begin_key, start_key);
-    args.keys[1] = min(begin_key + key_partition_interval - 1, end_key);
+    args.keys[1] = min(begin_key + key_interval - 1, end_key);
     args.xid = xid;
     args.csn = csn;
     oltpim::engine::g_engine.push(pim_id_of(begin_key), req);

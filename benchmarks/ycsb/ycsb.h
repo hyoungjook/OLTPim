@@ -20,6 +20,8 @@ extern const int g_scan_min_length;
 extern int g_scan_length_zipfain_rng;
 extern double g_scan_length_zipfain_theta;
 
+static constexpr uint64_t YCSB_TABLE_NUMA_BITS = 10;
+
 enum class ReadTransactionType {
   Sequential,
   AMACMultiGet,
@@ -114,7 +116,7 @@ class ycsb_bench_runner : public bench_runner {
   ycsb_bench_runner(ermia::Engine *db) : bench_runner(db) {
     ycsb_create_db(db);
 #if defined(OLTPIM)
-    ermia::pim::set_index_partition_interval("USERTABLE", 1);
+    ermia::pim::set_index_partition_interval("USERTABLE", 0, YCSB_TABLE_NUMA_BITS);
     ermia::pim::finalize_index_setup();
 #endif
   }

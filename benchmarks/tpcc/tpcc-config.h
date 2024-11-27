@@ -1552,18 +1552,22 @@ class tpcc_bench_runner : public bench_runner {
     RegisterIndex(db, "supplier",   "supplier",         true);
     RegisterIndex(db, "warehouse",  "warehouse",        true);
 #if defined(OLTPIM)
-    ermia::pim::set_index_partition_interval("customer", 1);
-    ermia::pim::set_index_partition_interval("customer_name_idx", tpcc_key64::customer_name_idx_interval);
-    ermia::pim::set_index_partition_interval("district", 1);
-    ermia::pim::set_index_partition_interval("history", 1);
-    ermia::pim::set_index_partition_interval("item", 1);
-    ermia::pim::set_index_partition_interval("new_order", tpcc_key64::new_order_interval);
-    ermia::pim::set_index_partition_interval("oorder", 1);
-    ermia::pim::set_index_partition_interval("oorder_c_id_idx", tpcc_key64::oorder_c_id_idx_interval);
-    ermia::pim::set_index_partition_interval("order_line", tpcc_key64::order_line_interval);
-    ermia::pim::set_index_partition_interval("stock", 1);
-    ermia::pim::set_index_partition_interval("stock_data", 1);
-    ermia::pim::set_index_partition_interval("warehouse", 1);
+#define partition_interval_set(table) \
+  ermia::pim::set_index_partition_interval(#table, \
+    tpcc_key64::table##_bits.pim_bits, tpcc_key64::table##_bits.numa_bits)
+    partition_interval_set(customer);
+    partition_interval_set(customer_name_idx);
+    partition_interval_set(district);
+    partition_interval_set(history);
+    partition_interval_set(item);
+    partition_interval_set(new_order);
+    partition_interval_set(oorder);
+    partition_interval_set(oorder_c_id_idx);
+    partition_interval_set(order_line);
+    partition_interval_set(stock);
+    partition_interval_set(stock_data);
+    partition_interval_set(warehouse);
+#undef partition_interval_set
     ermia::pim::finalize_index_setup();
 #endif
   }
