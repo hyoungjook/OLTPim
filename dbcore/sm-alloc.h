@@ -106,7 +106,7 @@ struct thread_data {
 void prepare_node_memory();
 void *allocate(size_t size);
 void deallocate(fat_ptr p);
-void *allocate_onnode(size_t size);
+void *allocate_onnode(size_t size, int node = -1);
 epoch_mgr::tls_storage *get_tls(void *);
 void global_init(void *);
 void *thread_registered(void *);

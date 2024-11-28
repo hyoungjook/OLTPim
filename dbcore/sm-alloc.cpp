@@ -213,9 +213,9 @@ out:
 }
 
 // Allocate memory directly from the node pool
-void *allocate_onnode(size_t size) {
+void *allocate_onnode(size_t size, int node) {
   size = align_up(size);
-  auto node = numa_node_of_cpu(sched_getcpu());
+  if (node < 0) node = numa_node_of_cpu(sched_getcpu());
   ALWAYS_ASSERT(node < config::numa_nodes);
   auto offset = __sync_fetch_and_add(&allocated_node_memory[node], size);
   if (likely(offset + size <= config::node_memory_gb * config::GB)) {
