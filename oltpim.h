@@ -24,7 +24,8 @@ struct log_record_t {
   uint32_t oid;
   uint64_t size;
   bool is_insert;
-  log_record_t() : entry{0}, index_id(0), pim_id(0), oid(0), size(0), is_insert(false) {}
+  // Don't do anything on constructor here. It becomes bottleneck on large coro-batch-size.
+  log_record_t() {}
   log_record_t(fat_ptr entry, uint32_t index_id, uint32_t pim_id, uint32_t oid, uint64_t size, bool insert)
     : entry(entry), index_id(index_id), pim_id(pim_id), oid(oid), size(size), is_insert(insert) {}
   inline Object *get_object() {return (Object*)entry.offset();}
