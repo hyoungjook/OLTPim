@@ -23,6 +23,9 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b) {
     num_numa_nodes = numa_max_node() + 1;
+    if (FLAGS_ycsb_oltpim_numa_local_key) {
+      oltpim::engine::g_engine.optimize_for_numa_local_key();
+    }
   }
 
   virtual void MyWork(char *) override {
