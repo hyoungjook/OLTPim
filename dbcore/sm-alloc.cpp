@@ -90,7 +90,6 @@ void prepare_node_memory() {
 }
 
 void gc_version_chain(fat_ptr *oid_entry) {
-#if 0
   fat_ptr ptr = *oid_entry;
   Object *cur_obj = (Object *)ptr.offset();
   if (!cur_obj) {
@@ -102,13 +101,13 @@ void gc_version_chain(fat_ptr *oid_entry) {
   // because the head might be still being modified (hence its _next field)
   // and might be gone any time (tx abort). Skip records in chkpt file as
   // well - not even in memory.
-  auto clsn = cur_obj->GetClsn();
+  auto csn = cur_obj->GetCSN();
   fat_ptr *prev_next = nullptr;
-  if (clsn.asi_type() == fat_ptr::ASI_CHK) {
+  if (csn.asi_type() == fat_ptr::ASI_CHK) {
     return;
   }
-  if (clsn.asi_type() != fat_ptr::ASI_LOG) {
-    DCHECK(clsn.asi_type() == fat_ptr::ASI_XID);
+  if (csn.asi_type() != fat_ptr::ASI_LOG) {
+    DCHECK(csn.asi_type() == fat_ptr::ASI_XID);
     ptr = cur_obj->GetNextVolatile();
     cur_obj = (Object *)ptr.offset();
   }
@@ -120,8 +119,8 @@ void gc_version_chain(fat_ptr *oid_entry) {
 
   while (ptr.offset()) {
     cur_obj = (Object *)ptr.offset();
-    clsn = cur_obj->GetClsn();
-    if (clsn == NULL_PTR || clsn.asi_type() != fat_ptr::ASI_LOG) {
+    csn = cur_obj->GetCSN();
+    if (csn == NULL_PTR) {
       // Might already got recycled, give up
       break;
     }
@@ -137,7 +136,7 @@ void gc_version_chain(fat_ptr *oid_entry) {
     // grabs the latest committed version directly. Log replay after the
     // chkpt-start lsn is necessary for correctness.
     uint64_t glsn = volatile_read(gc_lsn);
-    if (LSN::from_ptr(clsn).offset() <= glsn && ptr._ptr) {
+    if (CSN::from_ptr(csn).offset() <= glsn && ptr._ptr) {
       // Fast forward to the **second** version < gc_lsn. Consider that we set
       // safesnap lsn to 1.8, and gc_lsn to 1.6. Assume we have two versions
       // with LSNs 2 and 1.5.  We need to keep the one with LSN=1.5 although
@@ -152,11 +151,10 @@ void gc_version_chain(fat_ptr *oid_entry) {
       volatile_write(prev_next->_ptr, 0);
       while (ptr.offset()) {
         cur_obj = (Object *)ptr.offset();
-        clsn = cur_obj->GetClsn();
-        ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
-        ALWAYS_ASSERT(LSN::from_ptr(clsn).offset() <= glsn);
+        csn = cur_obj->GetCSN();
+        ALWAYS_ASSERT(CSN::from_ptr(csn).offset() <= glsn);
         fat_ptr next_ptr = cur_obj->GetNextVolatile();
-        cur_obj->SetClsn(NULL_PTR);
+        cur_obj->SetCSN(NULL_PTR);
         cur_obj->SetNextVolatile(NULL_PTR);
         if (!tls_free_object_pool) {
           tls_free_object_pool = new TlsFreeObjectPool;
@@ -167,7 +165,6 @@ void gc_version_chain(fat_ptr *oid_entry) {
       break;
     }
   }
-#endif
 }
 
 void *allocate(size_t size) {

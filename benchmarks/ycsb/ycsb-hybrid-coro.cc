@@ -8,6 +8,7 @@
 
 extern YcsbWorkload ycsb_workload;
 extern ReadTransactionType g_read_txn_type;
+extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
 class ycsb_cs_hybrid_worker : public ycsb_base_worker {
  public:
@@ -555,7 +556,8 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
 
         ermia::transaction *txn = nullptr;
         if (!ermia::config::index_probe_only) {
-          if (workload[workload_idx].name == "3-RMW" || workload[workload_idx].name == "0-Insert") {
+          if (workload[workload_idx].name == "0-HotRMW" || workload[workload_idx].name == "0-Insert" ||
+              workload[workload_idx].name == "0-HotUpdate") {
             txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[i], &transactions[i], i);
           } else {
             txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, arenas[i], &transactions[i], i);
@@ -597,7 +599,7 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
           }
         }
       }
-      ermia::MM::epoch_exit(0, begin_epoch);
+      ermia::MM::epoch_exit(coroutine_batch_end_epoch, begin_epoch);
     }
   }
 
@@ -633,7 +635,8 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
       ASSERT(workload[workload_idx].task_fn);
       ermia::transaction *txn = nullptr;
       if (!ermia::config::index_probe_only) {
-        if (workload[workload_idx].name == "3-RMW") {
+        if (workload[workload_idx].name == "0-HotRMW" || workload[workload_idx].name == "0-Insert" ||
+            workload[workload_idx].name == "0-HotUpdate") {
           txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[i], &transactions[i], i);
         } else {
           txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, arenas[i], &transactions[i], i);
@@ -702,7 +705,7 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
 
       i = (i + 1) & (batch_size - 1);
     }
-    ermia::MM::epoch_exit(0, begin_epoch);
+    ermia::MM::epoch_exit(coroutine_batch_end_epoch, begin_epoch);
   }
 
   /**
@@ -937,7 +940,7 @@ coldq:
 
       hot_queue_idx = (hot_queue_idx + 1) & (hot_queue_size - 1);
     }
-    ermia::MM::epoch_exit(0, begin_epoch);
+    ermia::MM::epoch_exit(coroutine_batch_end_epoch, begin_epoch);
   }
 };
 
