@@ -226,35 +226,53 @@ ConcurrentMasstreeIndex::pim_InsertOID(transaction *t, const uint64_t &key, uint
   co_return rc;
 }
 
-ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_UpdateRecord(transaction *t, const uint64_t &key, varstr &value) {
-  // For primary index only
+void
+ConcurrentMasstreeIndex::pim_UpdateRecordBegin(
+    transaction *t, const uint64_t &key, varstr &value, void *req_, uint16_t *pim_id_) {
   ALWAYS_ASSERT(IsPrimary());
   auto *xc = t->xc;
   fat_ptr new_obj = Object::Create(&value, xc->begin_epoch);
-  oltpim::request_update req;
-  auto &args = req.args;
+  auto *req = (oltpim::request_update*)req_;
+  auto &args = req->args;
   args.index_id = index_id;
   args.key = key;
   args.new_value = new_obj._ptr;
   args.xid = (xc->owner._val) >> 16;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
-  oltpim::engine::g_engine.push(pim_id, &req);
-  while (!oltpim::engine::g_engine.is_done(&req)) {
+  oltpim::engine::g_engine.push(pim_id, req);
+  *pim_id_ = (uint16_t)pim_id;
+}
+
+ermia::coro::task<rc_t>
+ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_, uint16_t pim_id) {
+  auto *req = (oltpim::request_update*)req_;
+  while (!oltpim::engine::g_engine.is_done(req)) {
     co_await std::suspend_always{};
   }
-  auto &rets = req.rets;
-  CHECK_VALID_STATUS(rets.status);
-  if (rets.status != STATUS_SUCCESS) {
+  auto &rets = req->rets;
+  auto status = rets.status;
+  CHECK_VALID_STATUS(status);
+  // Recover new_obj
+  fat_ptr new_obj{req->args.new_value};
+  if (status != STATUS_SUCCESS) {
     MM::deallocate(new_obj);
-    rc_t rc = (rets.status == STATUS_FAILED) ? RC_FALSE : RC_ABORT_SI_CONFLICT;
-    co_return {rc};
+    rc_t rc = (status == STATUS_FAILED) ? rc_t{RC_FALSE} : rc_t{RC_ABORT_SI_CONFLICT};
+    co_return rc;
   }
   // TODO manipulate new_value using old_value
   dbtuple *tuple = (dbtuple*)((Object*)new_obj.offset())->GetPayload();
   t->add_to_pim_write_set(new_obj, index_id, pim_id, rets.oid, tuple->size, false);
   co_return {RC_TRUE};
+}
+
+ermia::coro::task<rc_t>
+ConcurrentMasstreeIndex::pim_UpdateRecord(transaction *t, const uint64_t &key, varstr &value) {
+  oltpim::request_update req;
+  uint16_t pim_id;
+  pim_UpdateRecordBegin(t, key, value, &req, &pim_id);
+  auto rc = co_await pim_UpdateRecordEnd(t, &req, pim_id);
+  co_return rc;
 }
 
 ermia::coro::task<rc_t>

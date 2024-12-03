@@ -71,8 +71,12 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       LOG(FATAL) << "Not implemented";
     }
 
-    LOG_IF(FATAL, ops_per_hot_txn_const != FLAGS_ycsb_ops_per_hot_tx)
-        << "Recompile with matching ops_per_hot_txn_const in ycsb-oltpim.cc";
+    if (FLAGS_ycsb_oltpim_multiget) {
+      LOG_IF(FATAL,
+             !(FLAGS_ycsb_ops_per_hot_tx == ops_per_hot_txn_const &&
+               FLAGS_ycsb_update_per_tx == ops_per_hot_txn_const))
+          << "Recompile with matching ops_per_hot_txn_const in ycsb-oltpim.cc";
+    }
 
     LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro) << "Read txn type must be hybrid-coro";
 
@@ -94,7 +98,8 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     }
 
     if (ycsb_workload.update_percent()) {
-      w.push_back(workload_desc("0-HotUpdate", FLAGS_ycsb_hot_tx_percent * double(ycsb_workload.update_percent()) / 100.0, nullptr, nullptr, TxnHotUpdate));
+      w.push_back(workload_desc("0-HotUpdate", FLAGS_ycsb_hot_tx_percent * double(ycsb_workload.update_percent()) / 100.0, nullptr, nullptr,
+        (FLAGS_ycsb_oltpim_multiget ? TxnHotUpdateMultiGet : TxnHotUpdate)));
       w.push_back(workload_desc("1-ColdUpdate", (1 - FLAGS_ycsb_hot_tx_percent) * double(ycsb_workload.update_percent()) / 100.0, nullptr, nullptr, TxnColdUpdate));
     }
 
@@ -197,6 +202,10 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     return static_cast<ycsb_oltpim_worker *>(w)->txn_hot_update(txn, idx);
   }
 
+  static ermia::coro::task<rc_t> TxnHotUpdateMultiGet(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
+    return static_cast<ycsb_oltpim_worker *>(w)->txn_hot_update_multiget(txn, idx);
+  }
+
   static ermia::coro::task<rc_t> TxnColdUpdate(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
     return static_cast<ycsb_oltpim_worker *>(w)->txn_cold_update(txn, idx);
   }
@@ -275,6 +284,10 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       rc = co_await table_index->pim_GetRecordEnd(txn, v, &reqs[j]);
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
+      // This function should not return until all requests are done
+      // because the engine is using the reqs stack variable
+      // and it is released if this function returns.
+      assert(false);
       TryCatchOltpim(rc);
 #else
       // Under SI this must succeed
@@ -339,6 +352,35 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
 
 #ifndef CORO_BATCH_COMMIT
     rc_t rc = co_await db->Commit(txn);
+    TryCatchOltpim(rc);
+#endif
+    co_return {RC_TRUE};
+  }
+
+  ermia::coro::task<rc_t> txn_hot_update_multiget(ermia::transaction *txn, uint32_t idx) {
+    oltpim::request_update reqs[ops_per_hot_txn_const];
+    uint16_t pim_ids[ops_per_hot_txn_const];
+    for (int j = 0; j < FLAGS_ycsb_update_per_tx; ++j) {
+      uint64_t pim_key = rng_gen_key(true);
+      if (FLAGS_ycsb_oltpim_numa_local_key) {
+        pim_key = make_numa_local_key(pim_key);
+      }
+      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
+      new (v.data()) ycsb_kv::value("a");
+      table_index->pim_UpdateRecordBegin(txn, pim_key, v, &reqs[j], &pim_ids[j]);
+    }
+    rc_t rc{RC_TRUE};
+    for (int j = 0; j < FLAGS_ycsb_update_per_tx; ++j) {
+      // Txn should wait until all requests are done
+      // because the engine is using the reqs stack variable
+      // and it is released if this function returns.
+      rc_t _rc = co_await table_index->pim_UpdateRecordEnd(txn, &reqs[j], pim_ids[j]);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+    TryCatchOltpim(rc);
+
+#ifndef CORO_BATCH_COMMIT
+    rc = co_await db->Commit(txn);
     TryCatchOltpim(rc);
 #endif
     co_return {RC_TRUE};
