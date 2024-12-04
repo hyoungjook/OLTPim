@@ -11,6 +11,10 @@
 #include "sm-object.h"
 #include "../txn.h"
 
+#if defined(OLTPIM)
+#include "engine.hpp"
+#endif
+
 namespace ermia {
 namespace MM {
 
@@ -304,6 +308,9 @@ void epoch_reclaimed(void *cookie, void *epoch_cookie) {
   }
   if (e >= 2) {
     volatile_write(gc_lsn, epoch_reclaim_lsn[(e - 2) % 3]);
+#if defined(OLTPIM)
+    oltpim::engine::g_engine.update_gc_lsn(epoch_reclaim_lsn[(e - 2) % 3]);
+#endif
     volatile_write(gc_epoch, e - 2);
     epoch_reclaim_lsn[(e - 2) % 3] = 0;
   }
