@@ -270,12 +270,12 @@ void bench_runner::start_measurement() {
   barrier_a.wait_for();  // wait for all threads to start up
   std::map<std::string, size_t> table_sizes_before;
   if (ermia::config::verbose) {
-    for (std::map<std::string, ermia::OrderedIndex *>::iterator it = open_tables.begin();
-         it != open_tables.end(); ++it) {
-      const size_t s = it->second->Size();
-      std::cerr << "table " << it->first << " size " << s << std::endl;
-      table_sizes_before[it->first] = s;
-    }
+    //for (std::map<std::string, ermia::OrderedIndex *>::iterator it = open_tables.begin();
+    //     it != open_tables.end(); ++it) {
+    //  const size_t s = it->second->Size();
+    //  std::cerr << "table " << it->first << " size " << s << std::endl;
+    //  table_sizes_before[it->first] = s;
+    //}
     std::cerr << "starting benchmark..." << std::endl;
   }
 
@@ -499,17 +499,17 @@ void bench_runner::start_measurement() {
   //}
 
   if (ermia::config::verbose) {
-    std::cerr << "--- table statistics ---" << std::endl;
-    for (std::map<std::string, ermia::OrderedIndex *>::iterator it = open_tables.begin();
-         it != open_tables.end(); ++it) {
-      const size_t s = it->second->Size();
-      const ssize_t delta = ssize_t(s) - ssize_t(table_sizes_before[it->first]);
-      std::cerr << "table " << it->first << " size " << it->second->Size();
-      if (delta < 0)
-        std::cerr << " (" << delta << " records)" << std::endl;
-      else
-        std::cerr << " (+" << delta << " records)" << std::endl;
-    }
+    //std::cerr << "--- table statistics ---" << std::endl;
+    //for (std::map<std::string, ermia::OrderedIndex *>::iterator it = open_tables.begin();
+    //     it != open_tables.end(); ++it) {
+    //  const size_t s = it->second->Size();
+    //  const ssize_t delta = ssize_t(s) - ssize_t(table_sizes_before[it->first]);
+    //  std::cerr << "table " << it->first << " size " << it->second->Size();
+    //  if (delta < 0)
+    //    std::cerr << " (" << delta << " records)" << std::endl;
+    //  else
+    //    std::cerr << " (+" << delta << " records)" << std::endl;
+    //}
     std::cerr << "--- benchmark statistics ---" << std::endl;
     std::cerr << "runtime: " << elapsed_sec << " sec" << std::endl;
     std::cerr << "cpu_util: " << total_util / elapsed_sec << "%" << std::endl;
