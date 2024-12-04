@@ -74,7 +74,9 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
     if (!ermia::config::pcommit) {
-      latency_numer_us += t.lap();
+      uint64_t lat = t.lap();
+      latency_numer_us += lat;
+      latency_hist_us.add(lat);
     }
     backoff_shifts >>= 1;
   } else {
@@ -252,11 +254,13 @@ void bench_runner::start_measurement() {
     // Launch profiler
     if (pid == 0) {
       if(ermia::config::perf_record_event != "") {
-        exit(execl("/usr/bin/perf","perf","record", "-F", "99", "-e", ermia::config::perf_record_event.c_str(),
+        exit(execl("/usr/bin/perf","perf","record", "-F", "99", "-e", ermia::config::perf_record_event.c_str(), "--call-graph", "lbr",
                    "-p", parent_pid.str().c_str(), nullptr));
       } else {
-        exit(execl("/usr/bin/perf","perf","stat", "-B", "-e",  "cache-references,cache-misses,cycles,instructions,branches,faults",
-                   "-p", parent_pid.str().c_str(), nullptr));
+        exit(execl("/usr/bin/perf","perf","stat", "-e", 
+                   "power/energy-pkg/,power/energy-ram/",
+                   //"LLC-load-misses,LLC-store-misses", "-p", parent_pid.str().c_str(),
+                   nullptr));
       }
     } else {
       perf_pid = pid;
@@ -277,7 +281,9 @@ void bench_runner::start_measurement() {
 
   // Print some results every second
   uint64_t slept = 0;
+  uint64_t last_us = 0;
   uint64_t last_commits = 0, last_aborts = 0;
+  uint64_t last_latency_numer_us = 0;
 
   // Print CPU utilization as well. Code adapted from:
   // https://stackoverflow.com/questions/63166/how-to-determine-cpu-and-memory-consumption-from-inside-a-process
@@ -326,29 +332,41 @@ void bench_runner::start_measurement() {
   if (!ermia::config::benchmark_transactions) {
     // Time-based benchmark.
     if (ermia::config::print_cpu_util) {
-      printf("Sec,Commits,Aborts,CPU\n");
+      printf("Sec,Commits,Aborts,Tput,avgLat(us),CPU\n");
     } else {
-      printf("Sec,Commits,Aborts\n");
+      printf("Sec,Commits,Aborts,Tput,avgLat(us)\n");
     }
 
     auto gather_stats = [&]() {
       sleep(1);
-      uint64_t sec_commits = 0, sec_aborts = 0;
+      uint64_t sec_us = util::timer::cur_usec() - last_us;
+      last_us += sec_us;
+      uint64_t sec_commits = 0, sec_aborts = 0, sec_latency_numer_us = 0;
       for (size_t i = 0; i < ermia::config::worker_threads; i++) {
         sec_commits += workers[i]->get_ntxn_commits();
         sec_aborts += workers[i]->get_ntxn_aborts();
+        sec_latency_numer_us += ermia::config::pcommit ?
+          workers[i]->get_log()->get_latency() :
+          workers[i]->get_latency_numer_us();
       }
       sec_commits -= last_commits;
-      sec_aborts -= last_aborts;
       last_commits += sec_commits;
+      sec_aborts -= last_aborts;
       last_aborts += sec_aborts;
+      sec_latency_numer_us -= last_latency_numer_us;
+      last_latency_numer_us += sec_latency_numer_us;
+
+      double tput = (double)(sec_commits + sec_aborts) / ((double)sec_us / 1000000.0);
+      double avg_latency_us = (double)(sec_latency_numer_us) / (sec_commits);
 
       if (ermia::config::print_cpu_util) {
         sec_util = get_cpu_util();
         total_util += sec_util;
-        printf("%lu,%lu,%lu,%.2f%%\n", slept + 1, sec_commits, sec_aborts, sec_util);
+        printf("%lu,%lu,%lu,%lf,%lf,%.2f%%\n",
+          slept + 1, sec_commits, sec_aborts, tput, avg_latency_us, sec_util);
       } else {
-        printf("%lu,%lu,%lu\n", slept + 1, sec_commits, sec_aborts);
+        printf("%lu,%lu,%lu,%lf,%lf\n", 
+          slept + 1, sec_commits, sec_aborts, tput, avg_latency_us);
       }
       slept++;
     };
@@ -410,6 +428,7 @@ void bench_runner::start_measurement() {
   size_t n_phantom_aborts = 0;
   size_t n_query_commits = 0;
   uint64_t latency_numer_us = 0;
+  bench_worker::histogram latency_hist_us;
   for (size_t i = 0; i < ermia::config::worker_threads; i++) {
     n_commits += workers[i]->get_ntxn_commits();
     n_aborts += workers[i]->get_ntxn_aborts();
@@ -424,17 +443,19 @@ void bench_runner::start_measurement() {
       latency_numer_us += workers[i]->get_log()->get_latency();
     } else {
       latency_numer_us += workers[i]->get_latency_numer_us();
+      latency_hist_us += workers[i]->latency_hist_us;
     }
   }
 
   const unsigned long elapsed = t.lap();
   const double elapsed_nosync_sec = double(elapsed_nosync) / 1000000.0;
-  const double agg_nosync_throughput = double(n_commits) / elapsed_nosync_sec;
+  const uint64_t n_txns = n_commits + n_aborts;
+  const double agg_nosync_throughput = double(n_txns) / elapsed_nosync_sec;
   const double avg_nosync_per_core_throughput =
       agg_nosync_throughput / double(workers.size());
 
   const double elapsed_sec = double(elapsed) / 1000000.0;
-  const double agg_throughput = double(n_commits) / elapsed_sec;
+  const double agg_throughput = double(n_txns) / elapsed_sec;
   const double avg_per_core_throughput =
       agg_throughput / double(workers.size());
 
@@ -453,6 +474,8 @@ void bench_runner::start_measurement() {
 
   const double avg_latency_us = double(latency_numer_us) / double(n_commits);
   const double avg_latency_ms = avg_latency_us / 1000.0;
+  const double p99_latency_us = latency_hist_us.pN(99);
+  const double p99_latency_ms = p99_latency_us / 1000.0;
 
   uint64_t agg_latency_us = 0;
   uint64_t agg_redo_batches = 0;
@@ -505,9 +528,12 @@ void bench_runner::start_measurement() {
 
   // output for plotting script
   std::cout << "---------------------------------------\n";
-  std::cout << agg_throughput << " commits/s, "
-       //       << avg_latency_ms << " "
-       << agg_abort_rate << " total_aborts/s, " << agg_system_abort_rate
+  std::cout << n_txns << " total_txns, "
+       << agg_throughput << " txns/s, "
+       << avg_latency_ms << " latency.avg(ms), "
+       << p99_latency_ms << " latency.p99(ms), " << std::endl;
+  std::cout << "---------------------------------------\n";
+  std::cout << agg_abort_rate << " total_aborts/s, " << agg_system_abort_rate
        << " system_aborts/s, " << agg_user_abort_rate << " user_aborts/s, "
        << agg_int_abort_rate << " internal aborts/s, " << agg_si_abort_rate
        << " si_aborts/s, " << agg_serial_abort_rate << " serial_aborts/s, "
