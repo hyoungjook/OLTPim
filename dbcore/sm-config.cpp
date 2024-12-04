@@ -52,6 +52,7 @@ bool physical_io_workers_only = true;
 bool print_cpu_util = false;
 bool enable_perf = false;
 std::string perf_record_event("");
+bool measure_energy = false;
 uint64_t node_memory_gb = 12;
 int recovery_warm_up_policy = WARM_UP_NONE;
 bool pcommit = false;

@@ -82,6 +82,8 @@ DEFINE_bool(print_cpu_util, false, "Whether to print CPU utilization.");
 DEFINE_bool(enable_perf, false,
             "Whether to run Linux perf along with benchmark.");
 DEFINE_string(perf_record_event, "", "Perf record event");
+DEFINE_bool(measure_energy, false,
+            "Whether to measure energy consumption using linux perf.");
 #if defined(SSN) || defined(SSI)
 DEFINE_bool(safesnap, false,
             "Whether to use the safe snapshot (for SSI and SSN only).");
@@ -163,6 +165,7 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
   ermia::config::htt_is_on = FLAGS_htt;
   ermia::config::enable_perf = FLAGS_enable_perf;
   ermia::config::perf_record_event = FLAGS_perf_record_event;
+  ermia::config::measure_energy = FLAGS_measure_energy;
   ermia::config::physical_workers_only = FLAGS_physical_workers_only;
   ermia::config::physical_io_workers_only = FLAGS_physical_io_workers_only;
   if (ermia::config::physical_workers_only)
@@ -318,8 +321,8 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
   std::cerr << "  coro-batch-size   : " << FLAGS_coro_batch_size << std::endl;
   std::cerr << "  scan-use-iterator : " << FLAGS_scan_with_iterator
             << std::endl;
-  std::cerr << "  enable-perf       : " << ermia::config::enable_perf
-            << std::endl;
+  std::cerr << "  enable-perf       : " << ermia::config::enable_perf << std::endl;
+  std::cerr << "  measure-energy    : " << ermia::config::measure_energy << std::endl;
   std::cerr << "  pipelined commit  : " << ermia::config::pcommit << std::endl;
   std::cerr << "  dedicated pcommit thread: " << ermia::config::pcommit_thread
             << std::endl;

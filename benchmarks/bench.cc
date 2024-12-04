@@ -257,13 +257,22 @@ void bench_runner::start_measurement() {
         exit(execl("/usr/bin/perf","perf","record", "-F", "99", "-e", ermia::config::perf_record_event.c_str(), "--call-graph", "lbr",
                    "-p", parent_pid.str().c_str(), nullptr));
       } else {
-        exit(execl("/usr/bin/perf","perf","stat", "-e", 
-                   "power/energy-pkg/,power/energy-ram/",
-                   //"LLC-load-misses,LLC-store-misses", "-p", parent_pid.str().c_str(),
-                   nullptr));
+        exit(execl("/usr/bin/perf","perf","stat", "-e", "LLC-load-misses,LLC-store-misses",
+                   "-p", parent_pid.str().c_str(), nullptr));
       }
     } else {
       perf_pid = pid;
+    }
+  }
+  pid_t perf_energy_pid;
+  if (ermia::config::measure_energy) {
+    std::cerr << "start energy perf..." << std::endl;
+    pid_t pid = fork();
+    if (pid == 0) {
+      exit(execl("/usr/bin/perf", "perf", "stat", "-e", "power/energy-pkg/,power/energy-ram/", nullptr));
+    }
+    else {
+      perf_energy_pid = pid;
     }
   }
 
@@ -412,6 +421,11 @@ void bench_runner::start_measurement() {
 
   const unsigned long elapsed_nosync = t_nosync.lap();
 
+  if (ermia::config::measure_energy) {
+    std::cerr << "stop energy perf..." << std::endl;
+    kill(perf_energy_pid, SIGINT);
+    waitpid(perf_energy_pid, nullptr, 0);
+  }
   if (ermia::config::enable_perf) {
     std::cerr << "stop perf..." << std::endl;
     kill(perf_pid, SIGINT);
