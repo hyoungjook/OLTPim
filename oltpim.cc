@@ -85,7 +85,7 @@ ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *r
     co_return rc;
   }
   fat_ptr obj = {rets.value};
-  dbtuple *tuple = ((Object*)obj.offset())->GetPinnedTuple(t);
+  auto *tuple = (dbtuple*)((Object*)obj.offset())->GetPayload();
   value.p = tuple->get_value_start();
   value.l = tuple->size;
   co_return rc_t{RC_TRUE};
@@ -132,7 +132,7 @@ ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t &key, vars
     co_return rc;
   }
   fat_ptr obj = {rets.value};
-  dbtuple *tuple = ((Object*)obj.offset())->GetPinnedTuple(t);
+  auto *tuple = (dbtuple*)((Object*)obj.offset())->GetPayload();
   value.p = tuple->get_value_start();
   value.l = tuple->size;
   rc = tuple->size > 0 ? rc_t{RC_TRUE} : rc_t{RC_FALSE};
@@ -384,7 +384,7 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t &start_key, con
     }
     for (int i = 0; i < cnt2; ++i) {
       fat_ptr obj = {get_reqs[i].rets.value};
-      dbtuple *tuple = ((Object*)obj.offset())->GetPinnedTuple(t);
+      auto *tuple = (dbtuple*)((Object*)obj.offset())->GetPayload();
       varstr value(tuple->get_value_start(), tuple->size);
       if (!callback.Invoke(value)) break;
     }
@@ -396,7 +396,7 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t &start_key, con
       auto &rets = req->rets;
       for (uint32_t j = 0; j < rets.base.outs; ++j) {
         fat_ptr obj = {rets.values[j]};
-        dbtuple *tuple = ((Object*)obj.offset())->GetPinnedTuple(t);
+        auto *tuple = (dbtuple*)((Object*)obj.offset())->GetPayload();
         varstr value(tuple->get_value_start(), tuple->size);
         if (!callback.Invoke(value)) break;
       }
