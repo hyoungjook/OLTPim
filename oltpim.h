@@ -2,6 +2,7 @@
 #if defined(OLTPIM)
 #include "dbcore/sm-common.h"
 #include "dbcore/sm-coroutine.h"
+#include "interface_host.hpp"
 
 namespace ermia {
 
@@ -44,7 +45,10 @@ struct write_set_t {
   inline uint32_t size() {return num_entries;}
   inline void clear() {num_entries = 0;}
   inline log_record_t &operator[](uint32_t idx) {return entries[idx];}
+  // Buffer for oltpim::request_commit,abort
+  uint8_t req_buffer[sizeof(oltpim::request_commit) * kMaxEntries];
 };
+static_assert(sizeof(oltpim::request_commit) >= sizeof(oltpim::request_abort), "");
 
 class PIMScanCallback {
 public:

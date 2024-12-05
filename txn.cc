@@ -143,12 +143,13 @@ COMMIT_RET_TYPE transaction::Abort() {
   }
 
 #else // defined(OLTPIM)
-  oltpim::request_abort reqs[ermia::pim::write_set_t::kMaxEntries];
+  auto *reqs = (oltpim::request_abort*)&pim_write_set.req_buffer;
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     auto &w = pim_write_set[i];
     if (w.entry._ptr != 0) MM::deallocate(w.entry);
     
     // abort to pim
+    new (&reqs[i]) oltpim::request_abort;
     auto &args = reqs[i].args;
     args.xid = (xid._val) >> 16;
     oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
@@ -235,12 +236,19 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
   }
 
   // Post-commit
-  oltpim::request_commit reqs[ermia::pim::write_set_t::kMaxEntries];
+  auto *reqs = (oltpim::request_commit*)&pim_write_set.req_buffer;
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     auto &w = pim_write_set[i];
     dbtuple fake_tuple(0);
     dbtuple *tuple = (w.entry._ptr != 0) ? (dbtuple*)(w.get_object()->GetPayload()) : &fake_tuple;
     uint32_t off = lb->payload_size;
+
+    // commit to pim
+    new (&reqs[i]) oltpim::request_commit;
+    auto &args = reqs[i].args;
+    args.xid = (xid._val) >> 16;
+    args.csn = xc->end;
+    oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
 
     // hack: pack index_id and pim_id to fid
     const uint32_t fid = (w.index_id << 16) | (w.pim_id);
@@ -253,15 +261,8 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
       ALWAYS_ASSERT(ret_off == off);
     }
     ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
-
-    // commit to pim
-    auto &args = reqs[i].args;
-    args.xid = (xid._val) >> 16;
-    args.csn = xc->end;
-    oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
   }
   ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
-
   // TODO remove waiting
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
