@@ -259,45 +259,23 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   }
 
   ermia::coro::task<rc_t> txn_hot_read_multiget(ermia::transaction *txn, uint32_t idx) {
+    ASSERT(!ermia::config::index_probe_only);
     oltpim::request_get reqs[ops_per_hot_txn_const];
     for (int j = 0; j < FLAGS_ycsb_ops_per_hot_tx; ++j) {
-      // TODO(tzwang): add read/write_all_fields knobs
-      
-      if (!ermia::config::index_probe_only) {
-        uint64_t pim_key = rng_gen_key(true);
-        table_index->pim_GetRecordBegin(txn, pim_key, &reqs[j]);
-      }
-      else {
-        ALWAYS_ASSERT(false);
-      }
+      uint64_t pim_key = rng_gen_key(true);
+      table_index->pim_GetRecordBegin(txn, pim_key, &reqs[j]);
     }
+    ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
+    rc_t rc;
     for (int j = 0; j < FLAGS_ycsb_ops_per_hot_tx; ++j) {
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
-      rc_t rc = rc_t{RC_INVALID};
       rc = co_await table_index->pim_GetRecordEnd(txn, v, &reqs[j]);
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      // This function should not return until all requests are done
-      // because the engine is using the reqs stack variable
-      // and it is released if this function returns.
-      assert(false);
-      TryCatchOltpim(rc);
-#else
       // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(ermia::config::index_probe_only || *(char *)v.data() == 'a');
-#endif
-      if (!ermia::config::index_probe_only) {
-        memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
-        ALWAYS_ASSERT(*(char *)v.data() == 'a');
-      }
+      memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
+      ALWAYS_ASSERT(*(char *)v.data() == 'a');
     }
-
-    if (!ermia::config::index_probe_only) {
-      rc_t rc = co_await db->Commit(txn);
-      TryCatchOltpim(rc);
-    }
-
+    rc = co_await db->Commit(txn);
+    TryCatchOltpim(rc);
     co_return {RC_TRUE};
   }
 
@@ -332,8 +310,8 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   }
 
   ermia::coro::task<rc_t> txn_hot_update(ermia::transaction *txn, uint32_t idx) {
+    ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
     for (int i = 0; i < FLAGS_ycsb_update_per_tx; ++i) {
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
       new (v.data()) ycsb_kv::value("a");
       uint64_t pim_key = rng_gen_key(true);
       auto rc = co_await table_index->pim_UpdateRecord(txn, pim_key, v);
@@ -349,19 +327,18 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
 
   ermia::coro::task<rc_t> txn_hot_update_multiget(ermia::transaction *txn, uint32_t idx) {
     oltpim::request_update reqs[ops_per_hot_txn_const];
-    uint16_t pim_ids[ops_per_hot_txn_const];
+    ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
     for (int j = 0; j < FLAGS_ycsb_update_per_tx; ++j) {
       uint64_t pim_key = rng_gen_key(true);
-      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
       new (v.data()) ycsb_kv::value("a");
-      table_index->pim_UpdateRecordBegin(txn, pim_key, v, &reqs[j], &pim_ids[j]);
+      table_index->pim_UpdateRecordBegin(txn, pim_key, v, &reqs[j]);
     }
     rc_t rc{RC_TRUE};
     for (int j = 0; j < FLAGS_ycsb_update_per_tx; ++j) {
       // Txn should wait until all requests are done
       // because the engine is using the reqs stack variable
       // and it is released if this function returns.
-      rc_t _rc = co_await table_index->pim_UpdateRecordEnd(txn, &reqs[j], pim_ids[j]);
+      rc_t _rc = co_await table_index->pim_UpdateRecordEnd(txn, &reqs[j]);
       if (_rc._val != RC_TRUE) rc = _rc;
     }
     TryCatchOltpim(rc);

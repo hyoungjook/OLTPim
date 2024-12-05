@@ -249,11 +249,11 @@ public:
   // the user should allocate arg, ret, req of proper type
   void pim_GetRecordBegin(transaction *t, const uint64_t &key, void *req);
   ermia::coro::task<rc_t> pim_GetRecordEnd(transaction *t, varstr &value, void *req);
-  void pim_UpdateRecordBegin(transaction *t, const uint64_t &key, varstr &value, void *req, uint16_t *pim_id);
-  ermia::coro::task<rc_t> pim_UpdateRecordEnd(transaction *t, void *req, uint16_t pim_id);
+  void pim_UpdateRecordBegin(transaction *t, const uint64_t &key, varstr &value, void *req);
+  ermia::coro::task<rc_t> pim_UpdateRecordEnd(transaction *t, void *req);
   void pim_InsertRecordBegin(transaction *t, const uint64_t &key, varstr &value,
-                             void *req, uint16_t *pim_id);
-  ermia::coro::task<rc_t> pim_InsertRecordEnd(transaction *t, void *req, uint16_t pim_id, uint64_t *oid = nullptr);
+                             void *req);
+  ermia::coro::task<rc_t> pim_InsertRecordEnd(transaction *t, void *req, uint64_t *oid = nullptr);
   void pim_InsertOIDBegin(transaction *t, const uint64_t &key, uint64_t oid, void *req);
   ermia::coro::task<rc_t> pim_InsertOIDEnd(transaction *t, void *req);
 

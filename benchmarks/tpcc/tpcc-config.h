@@ -592,7 +592,6 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
       ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
       const uint num = std::min<uint>(batchsize, NumItems() - i_begin + 1);
 #if defined(OLTPIM)
-      uint16_t pim_ids[batchsize];
       oltpim::request_insert reqs[batchsize];
 #endif
       for (uint j = 0; j < num; ++j) {
@@ -621,10 +620,10 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
         total_sz += sz;
 #if defined(OLTPIM)
         const uint64_t pk = tpcc_key64::item(k);
-        tbl_item(1)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &reqs[j], &pim_ids[j]);
+        tbl_item(1)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &reqs[j]);
       }
       for (uint j = 0; j < num; ++j) {
-        TryVerifyStrict(sync_wait_oltpim_coro(tbl_item(1)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j])));
+        TryVerifyStrict(sync_wait_oltpim_coro(tbl_item(1)->pim_InsertRecordEnd(txn, &reqs[j])));
 #else
         if ((i_begin + j) * 100 <= NumItems() * (100 - FLAGS_tpcc_cold_item_pct)) {
 #if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
@@ -690,7 +689,6 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
         ermia::transaction *const txn = db->NewTransaction(0, *arena, txn_buf());
         const uint num = std::min<uint>(batchsize, NumItems() - i_begin + 1);
 #if defined(OLTPIM)
-        uint16_t pim_ids[2 * batchsize];
         oltpim::request_insert reqs[2 * batchsize];
 #endif
         for (uint j = 0; j < num; ++j) {
@@ -733,13 +731,12 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
           n_stocks++;
 #if defined(OLTPIM)
           const uint64_t pk = tpcc_key64::stock(k);
-          tbl_stock(w)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &reqs[j], &pim_ids[j]);
-          tbl_stock_data(w)->pim_InsertRecordBegin(txn, pk, Encode(str(Size(v_data)), v_data),
-            &reqs[batchsize + j], &pim_ids[batchsize + j]);
+          tbl_stock(w)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &reqs[j]);
+          tbl_stock_data(w)->pim_InsertRecordBegin(txn, pk, Encode(str(Size(v_data)), v_data), &reqs[batchsize + j]);
         }
         for (uint j = 0; j < num; ++j) {
-          TryVerifyStrict(sync_wait_oltpim_coro(tbl_stock(w)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j])));
-          TryVerifyStrict(sync_wait_oltpim_coro(tbl_stock_data(w)->pim_InsertRecordEnd(txn, &reqs[batchsize + j], pim_ids[batchsize + j])));
+          TryVerifyStrict(sync_wait_oltpim_coro(tbl_stock(w)->pim_InsertRecordEnd(txn, &reqs[j])));
+          TryVerifyStrict(sync_wait_oltpim_coro(tbl_stock_data(w)->pim_InsertRecordEnd(txn, &reqs[batchsize + j])));
 #elif defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
           TryVerifyStrict(sync_wait_coro(tbl_stock(w)->InsertRecord(txn, Encode(str(Size(k)), k),
                                                  Encode(str(sz), v))));
@@ -864,7 +861,6 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
           ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
 #if defined(OLTPIM)
           uint64_t pk_idx[batchsize];
-          uint16_t pim_ids[batchsize];
           oltpim::request_insert reqs[batchsize];
 #endif
           for (uint j = 0; j < num; ++j) {
@@ -918,12 +914,12 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 
 #if defined(OLTPIM)
             const uint64_t pk = tpcc_key64::customer(k);
-            tbl_customer(w)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &reqs[j], &pim_ids[j]);
+            tbl_customer(w)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &reqs[j]);
             pk_idx[j] = tpcc_key64::customer_name_idx(k_idx);
           }
           for (uint j = 0; j < num; ++j) {
             uint64_t c_oid = 0;
-            TryVerifyStrict(sync_wait_oltpim_coro(tbl_customer(w)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j], &c_oid)));
+            TryVerifyStrict(sync_wait_oltpim_coro(tbl_customer(w)->pim_InsertRecordEnd(txn, &reqs[j], &c_oid)));
             tbl_customer_name_idx(w)->pim_InsertOIDBegin(txn, pk_idx[j], c_oid, &reqs[j]);
           }
           for (uint j = 0; j < num; ++j) {
@@ -977,10 +973,10 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 
 #if defined(OLTPIM)
             const uint64_t pk_hist = tpcc_key64::history(k_hist);
-            tbl_history(w)->pim_InsertRecordBegin(txn, pk_hist, Encode(str(Size(v_hist)), v_hist), &reqs[j], &pim_ids[j]);
+            tbl_history(w)->pim_InsertRecordBegin(txn, pk_hist, Encode(str(Size(v_hist)), v_hist), &reqs[j]);
           }
           for (uint j = 0; j < num; ++j) {
-            TryVerifyStrict(sync_wait_oltpim_coro(tbl_history(w)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j])));
+            TryVerifyStrict(sync_wait_oltpim_coro(tbl_history(w)->pim_InsertRecordEnd(txn, &reqs[j])));
 #else
 #if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
             TryVerifyStrict(
@@ -1063,7 +1059,6 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
           arena->reset();
           ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
 #if defined(OLTPIM)
-          uint16_t pim_ids[batchsize];
           oltpim::request_insert reqs[batchsize];
 #endif
           struct {
@@ -1098,12 +1093,12 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
             n_oorders++;
 #if defined(OLTPIM)
             const uint64_t pk_oo = tpcc_key64::oorder(k_oo);
-            tbl_oorder(w)->pim_InsertRecordBegin(txn, pk_oo, Encode(str(sz), v_oo), &reqs[j], &pim_ids[j]);
+            tbl_oorder(w)->pim_InsertRecordBegin(txn, pk_oo, Encode(str(sz), v_oo), &reqs[j]);
           }
           for (uint j = 0; j < num; ++j) {
             const uint c = c_begin + j;
             uint64_t v_oo_oid = 0;
-            TryVerifyStrict(sync_wait_oltpim_coro(tbl_oorder(w)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j], &v_oo_oid)));
+            TryVerifyStrict(sync_wait_oltpim_coro(tbl_oorder(w)->pim_InsertRecordEnd(txn, &reqs[j], &v_oo_oid)));
 
 #else
             ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
@@ -1148,13 +1143,13 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
               n_new_orders++;
 #if defined(OLTPIM)
               const uint64_t pk_no = tpcc_key64::new_order(k_no);
-              tbl_new_order(w)->pim_InsertRecordBegin(txn, pk_no, Encode(str(sz), v_no), &reqs[j], &pim_ids[j]);
+              tbl_new_order(w)->pim_InsertRecordBegin(txn, pk_no, Encode(str(sz), v_no), &reqs[j]);
             }
           }
           for (uint j = 0; j < num; ++j) {
             const uint c = c_begin + j;
             if (c >= 2101) {
-              TryVerifyStrict(sync_wait_oltpim_coro(tbl_new_order(w)->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j])));
+              TryVerifyStrict(sync_wait_oltpim_coro(tbl_new_order(w)->pim_InsertRecordEnd(txn, &reqs[j])));
 #else
 #if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
               TryVerifyStrict(sync_wait_coro(tbl_new_order(w)->InsertRecord(
@@ -1208,15 +1203,14 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
 
 #if defined(OLTPIM)
                 const uint64_t pk_ol = tpcc_key64::order_line(k_ol);
-                tbl_order_line(w)->pim_InsertRecordBegin(txn, pk_ol, Encode(str(sz), v_ol),
-                  &reqs[batch_jdx], &pim_ids[batch_jdx]);
+                tbl_order_line(w)->pim_InsertRecordBegin(txn, pk_ol, Encode(str(sz), v_ol), &reqs[batch_jdx]);
               }
             }
             for (uint j_in = 0; j_in < num_oos; ++j_in) {
               const uint j = j_out + j_in;
               for (uint l = 0; l < uint(v_oo_reuse[j].o_ol_cnt); ++l) {
                 const uint batch_jdx = j_in * 15 + l;
-                TryVerifyStrict(sync_wait_oltpim_coro(tbl_order_line(w)->pim_InsertRecordEnd(txn, &reqs[batch_jdx], pim_ids[batch_jdx])));
+                TryVerifyStrict(sync_wait_oltpim_coro(tbl_order_line(w)->pim_InsertRecordEnd(txn, &reqs[batch_jdx])));
 #else
 #if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
                 TryVerifyStrict(sync_wait_coro(tbl_order_line(w)->InsertRecord(

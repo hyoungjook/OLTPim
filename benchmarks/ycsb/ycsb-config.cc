@@ -119,7 +119,6 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
     txn = db->NewTransaction(0, *arena, txn_buf());
     const uint64_t num = std::min(kBatchSize, hot_to_insert - i_begin);
 #if defined(OLTPIM)
-    uint16_t pim_ids[kBatchSize];
     oltpim::request_insert reqs[kBatchSize];
     auto *const main_index = (ermia::ConcurrentMasstreeIndex*)tbl;
 #endif
@@ -134,10 +133,10 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
 
 #if defined(OLTPIM)
       const uint64_t pk = hot_start_key + i;
-      main_index->pim_InsertRecordBegin(txn, pk, v, &reqs[j], &pim_ids[j]);
+      main_index->pim_InsertRecordBegin(txn, pk, v, &reqs[j]);
     }
     for (uint64_t j = 0; j < num; ++j) {
-      TryVerifyStrict(sync_wait_oltpim_coro(main_index->pim_InsertRecordEnd(txn, &reqs[j], pim_ids[j])));
+      TryVerifyStrict(sync_wait_oltpim_coro(main_index->pim_InsertRecordEnd(txn, &reqs[j])));
 #else
 #if defined(NESTED_COROUTINE)
       TryVerifyStrict(sync_wait_coro(tbl->InsertRecord(txn, k, v)));

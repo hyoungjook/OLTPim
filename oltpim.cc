@@ -141,8 +141,7 @@ ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t &key, vars
 }
 
 void
-ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t &key, varstr &value,
-    void *req_, uint16_t *pim_id_) {
+ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t &key, varstr &value, void *req_) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
   auto *xc = t->xc;
@@ -156,11 +155,10 @@ ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t &k
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, req);
-  *pim_id_ = (uint16_t)pim_id;
 }
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_InsertRecordEnd(transaction *t, void *req_, uint16_t pim_id, uint64_t *oid) {
+ConcurrentMasstreeIndex::pim_InsertRecordEnd(transaction *t, void *req_, uint64_t *oid) {
   auto *req = (oltpim::request_insert*)req_;
   while (!oltpim::engine::g_engine.is_done(req)) {
     co_await std::suspend_always{};
@@ -175,6 +173,7 @@ ConcurrentMasstreeIndex::pim_InsertRecordEnd(transaction *t, void *req_, uint16_
     co_return {rc};
   }
   dbtuple *tuple = (dbtuple*)((Object*)new_obj.offset())->GetPayload();
+  int pim_id = pim_id_of(req->args.key);
   t->add_to_pim_write_set(new_obj, index_id, pim_id, rets.oid, tuple->size, true);
   if (oid) *oid = SVALUE_MAKE(pim_id, rets.oid);
   co_return {RC_TRUE};
@@ -183,9 +182,8 @@ ConcurrentMasstreeIndex::pim_InsertRecordEnd(transaction *t, void *req_, uint16_
 ermia::coro::task<rc_t>
 ConcurrentMasstreeIndex::pim_InsertRecord(transaction *t, const uint64_t &key, varstr &value, uint64_t *oid) {
   oltpim::request_insert req;
-  uint16_t pim_id;
-  pim_InsertRecordBegin(t, key, value, &req, &pim_id);
-  auto rc = co_await pim_InsertRecordEnd(t, &req, pim_id, oid);
+  pim_InsertRecordBegin(t, key, value, &req);
+  auto rc = co_await pim_InsertRecordEnd(t, &req, oid);
   co_return rc;
 }
 
@@ -230,7 +228,7 @@ ConcurrentMasstreeIndex::pim_InsertOID(transaction *t, const uint64_t &key, uint
 
 void
 ConcurrentMasstreeIndex::pim_UpdateRecordBegin(
-    transaction *t, const uint64_t &key, varstr &value, void *req_, uint16_t *pim_id_) {
+    transaction *t, const uint64_t &key, varstr &value, void *req_) {
   ALWAYS_ASSERT(IsPrimary());
   auto *xc = t->xc;
   fat_ptr new_obj = Object::Create(&value, xc->begin_epoch);
@@ -243,11 +241,10 @@ ConcurrentMasstreeIndex::pim_UpdateRecordBegin(
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, req);
-  *pim_id_ = (uint16_t)pim_id;
 }
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_, uint16_t pim_id) {
+ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_) {
   auto *req = (oltpim::request_update*)req_;
   while (!oltpim::engine::g_engine.is_done(req)) {
     co_await std::suspend_always{};
@@ -264,6 +261,7 @@ ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_, uint16_
   }
   // TODO manipulate new_value using old_value
   dbtuple *tuple = (dbtuple*)((Object*)new_obj.offset())->GetPayload();
+  int pim_id = pim_id_of(req->args.key);
   t->add_to_pim_write_set(new_obj, index_id, pim_id, rets.oid, tuple->size, false);
   co_return {RC_TRUE};
 }
@@ -271,9 +269,8 @@ ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_, uint16_
 ermia::coro::task<rc_t>
 ConcurrentMasstreeIndex::pim_UpdateRecord(transaction *t, const uint64_t &key, varstr &value) {
   oltpim::request_update req;
-  uint16_t pim_id;
-  pim_UpdateRecordBegin(t, key, value, &req, &pim_id);
-  auto rc = co_await pim_UpdateRecordEnd(t, &req, pim_id);
+  pim_UpdateRecordBegin(t, key, value, &req);
+  auto rc = co_await pim_UpdateRecordEnd(t, &req);
   co_return rc;
 }
 
