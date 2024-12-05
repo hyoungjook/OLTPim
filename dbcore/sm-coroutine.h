@@ -21,6 +21,9 @@ using std::noop_coroutine;
 using std::suspend_always;
 using std::suspend_never;
 #endif  // __has_include(<coroutine>)
+namespace ermia::MM {
+void *allocate(size_t size);
+}
 
 namespace ermia {
 namespace coro {
@@ -40,8 +43,7 @@ class tcalloc {
         memset(entries, 0, sizeof(entries));
 
         constexpr size_t kArenaSize = 8 * 1024 * 1024;
-        arena = static_cast<uint8_t *>(
-            numa_alloc_onnode(kArenaSize, numa_node_of_cpu(sched_getcpu())));
+        arena = static_cast<uint8_t *>(MM::allocate(kArenaSize));
         arena_top = arena;
     }
     ~tcalloc() {}

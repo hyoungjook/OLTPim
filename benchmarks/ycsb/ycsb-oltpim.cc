@@ -265,8 +265,8 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       uint64_t pim_key = rng_gen_key(true);
       table_index->pim_GetRecordBegin(txn, pim_key, &reqs[j]);
     }
-    ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
     rc_t rc;
+    ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
     for (int j = 0; j < FLAGS_ycsb_ops_per_hot_tx; ++j) {
       rc = co_await table_index->pim_GetRecordEnd(txn, v, &reqs[j]);
       // Under SI this must succeed
@@ -445,7 +445,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     std::vector<uint32_t> task_workload_idxs(batch_size);
     std::unordered_set<uint32_t> cold_txn_set;
     util::timer *ts = (util::timer *)numa_alloc_onnode(sizeof(util::timer) * batch_size, numa_node_of_cpu(sched_getcpu()));
-    transactions = (ermia::transaction *)malloc(sizeof(ermia::transaction) * batch_size);
+    transactions = (ermia::transaction *)numa_alloc_onnode(sizeof(ermia::transaction) * batch_size, numa_node_of_cpu(sched_getcpu()));
     arenas = (ermia::str_arena *)numa_alloc_onnode(sizeof(ermia::str_arena) * batch_size, numa_node_of_cpu(sched_getcpu()));
     for (auto i = 0; i < batch_size; ++i) {
       new (arenas + i) ermia::str_arena(ermia::config::arena_size_mb);
