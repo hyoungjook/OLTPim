@@ -16,3 +16,4 @@ DECLARE_double(ycsb_zipfian_theta);
 DECLARE_string(ycsb_workload);
 DECLARE_string(ycsb_hot_table_rng);
 DECLARE_string(ycsb_read_tx_type);
+DECLARE_bool(ycsb_numa_local);

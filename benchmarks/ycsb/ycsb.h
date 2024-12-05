@@ -20,8 +20,6 @@ extern const int g_scan_min_length;
 extern int g_scan_length_zipfain_rng;
 extern double g_scan_length_zipfain_theta;
 
-static constexpr uint64_t YCSB_TABLE_NUMA_BITS = 10;
-
 enum class ReadTransactionType {
   Sequential,
   AMACMultiGet,
@@ -101,7 +99,8 @@ class ycsb_table_loader : public bench_loader {
       : bench_loader(seed, db, open_tables), loader_id(loader_id) {}
  private:
   uint32_t loader_id;
-  void do_load(ermia::OrderedIndex *tbl, std::string table_name, uint64_t hot_record_count, uint64_t cold_record_count);
+  void do_load(ermia::OrderedIndex *tbl, std::string table_name, 
+    uint64_t hot_to_insert, uint64_t hot_start_key, uint64_t cold_to_insert, uint64_t cold_start_key);
 
  protected:
   void load();
@@ -116,13 +115,29 @@ class ycsb_bench_runner : public bench_runner {
   ycsb_bench_runner(ermia::Engine *db) : bench_runner(db) {
     ycsb_create_db(db);
 #if defined(OLTPIM)
-    ermia::pim::set_index_partition_interval("USERTABLE", 0, YCSB_TABLE_NUMA_BITS);
+    if (!FLAGS_ycsb_numa_local) {
+      ermia::pim::set_index_partition_interval("USERTABLE", 0, false, 0);
+    }
+    else {
+      for (int numa_id = 0; numa_id < ermia::config::numa_nodes; ++numa_id) {
+        std::string name = std::string("USERTABLE") + std::to_string(numa_id);
+        ermia::pim::set_index_partition_interval(name.c_str(), 0, true, (uint32_t)numa_id);
+      }
+    }
     ermia::pim::finalize_index_setup();
 #endif
   }
 
   virtual void prepare(char *) {
-    open_tables["USERTABLE"] = ermia::TableDescriptor::GetPrimaryIndex("USERTABLE");
+    if (!FLAGS_ycsb_numa_local) {
+      open_tables["USERTABLE"] = ermia::TableDescriptor::GetPrimaryIndex("USERTABLE");
+    }
+    else {
+      for (int numa_id = 0; numa_id < ermia::config::numa_nodes; ++numa_id) {
+        std::string name = std::string("USERTABLE") + std::to_string(numa_id);
+        open_tables[name] = ermia::TableDescriptor::GetPrimaryIndex(name);
+      }
+    }
   }
 
  protected:
@@ -168,8 +183,11 @@ class ycsb_base_worker : public bench_worker {
   ycsb_base_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
                    const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                    spin_barrier *barrier_a, spin_barrier *barrier_b)
-      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("USERTABLE")) {
+      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b) {
+      if (!FLAGS_ycsb_numa_local) {
+        table_index = (ermia::ConcurrentMasstreeIndex*)open_tables.at("USERTABLE");
+      }
+      // if (FLAGS_ycsb_numa_local), table_index is assigned at the start of MyWork().
       const unsigned int key_rng_seed = 1237 + worker_id;
       uniform_rng = foedus::assorted::UniformRandom(key_rng_seed);
       if (g_hot_table_zipfian) {
@@ -259,6 +277,13 @@ class ycsb_base_worker : public bench_worker {
     ::BuildKey(r_start_key, start_key);
     ::BuildKey(r_end_key, end_key);
     return {start_key, end_key};
+  }
+
+  inline void assign_numa_local_table_index() {
+    ASSERT(FLAGS_ycsb_numa_local);
+    // dynamically assign numa-local table to the variable
+    std::string name = std::string("USERTABLE") + std::to_string(me->node);
+    table_index = (ermia::ConcurrentMasstreeIndex*)open_tables.at(name);
   }
 
   ermia::ConcurrentMasstreeIndex *table_index;

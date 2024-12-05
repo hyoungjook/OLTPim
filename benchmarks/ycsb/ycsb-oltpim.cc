@@ -8,7 +8,6 @@
 #include <gflags/gflags.h>
 
 DEFINE_bool(ycsb_oltpim_multiget, false, "Use multiget for YCSB oltpim benchmark");
-DEFINE_bool(ycsb_oltpim_numa_local_key, false, "Use numa-local key for YCSB oltpim");
 
 extern YcsbWorkload ycsb_workload;
 extern ReadTransactionType g_read_txn_type;
@@ -23,14 +22,14 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b) {
-    num_numa_nodes = numa_max_node() + 1;
-    if (FLAGS_ycsb_oltpim_numa_local_key) {
+    if (FLAGS_ycsb_numa_local) {
       oltpim::engine::g_engine.optimize_for_numa_local_key();
     }
   }
 
   virtual void MyWork(char *) override {
     ALWAYS_ASSERT(is_worker);
+    if (FLAGS_ycsb_numa_local) assign_numa_local_table_index();
     tlog = ermia::GetLog();
     workload = get_workload();
     txn_counts.resize(workload.size());
@@ -232,9 +231,6 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       rc_t rc = rc_t{RC_INVALID};
       if (!ermia::config::index_probe_only) {
         uint64_t pim_key = rng_gen_key(true);
-        if (FLAGS_ycsb_oltpim_numa_local_key) {
-          pim_key = make_numa_local_key(pim_key);
-        }
         rc = co_await table_index->pim_GetRecord(txn, pim_key, v);
       } else {
         ALWAYS_ASSERT(false);
@@ -269,9 +265,6 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       
       if (!ermia::config::index_probe_only) {
         uint64_t pim_key = rng_gen_key(true);
-        if (FLAGS_ycsb_oltpim_numa_local_key) {
-          pim_key = make_numa_local_key(pim_key);
-        }
         table_index->pim_GetRecordBegin(txn, pim_key, &reqs[j]);
       }
       else {
@@ -343,9 +336,6 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
       new (v.data()) ycsb_kv::value("a");
       uint64_t pim_key = rng_gen_key(true);
-      if (FLAGS_ycsb_oltpim_numa_local_key) {
-        pim_key = make_numa_local_key(pim_key);
-      }
       auto rc = co_await table_index->pim_UpdateRecord(txn, pim_key, v);
       TryCatchOltpim(rc);
     }
@@ -362,9 +352,6 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     uint16_t pim_ids[ops_per_hot_txn_const];
     for (int j = 0; j < FLAGS_ycsb_update_per_tx; ++j) {
       uint64_t pim_key = rng_gen_key(true);
-      if (FLAGS_ycsb_oltpim_numa_local_key) {
-        pim_key = make_numa_local_key(pim_key);
-      }
       ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
       new (v.data()) ycsb_kv::value("a");
       table_index->pim_UpdateRecordBegin(txn, pim_key, v, &reqs[j], &pim_ids[j]);
@@ -804,20 +791,6 @@ coldq:
       hot_queue_idx = (hot_queue_idx + 1) & (hot_queue_size - 1);
     }
     ermia::MM::epoch_exit(coroutine_batch_end_epoch, begin_epoch);
-  }
-
-  uint16_t num_numa_nodes;
-  uint64_t make_numa_local_key(uint64_t pim_key) {
-    uint16_t numa_id = me->node;
-    uint64_t lower = pim_key & ((1UL << YCSB_TABLE_NUMA_BITS) - 1);
-    uint64_t upper = pim_key >> YCSB_TABLE_NUMA_BITS;
-    // make upper % num_numa_nodes == numa_id
-    upper = upper + numa_id - (upper % num_numa_nodes);
-    uint64_t new_key = (upper << YCSB_TABLE_NUMA_BITS) | lower;
-    if (new_key >= FLAGS_ycsb_hot_table_size) {
-      new_key -= num_numa_nodes * (1UL << YCSB_TABLE_NUMA_BITS);
-    }
-    return new_key;
   }
 };
 

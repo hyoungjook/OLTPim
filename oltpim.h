@@ -15,7 +15,7 @@ void register_index(ConcurrentMasstreeIndex *index);
 void finalize_index_setup();
 // call this for all existing indexes
 void set_index_partition_interval(
-  const char *index_name, uint64_t pim_bits, uint64_t numa_bits);
+  const char *index_name, uint64_t interval_bits, bool numa_local, uint32_t numa_id);
 
 struct log_record_t {
   fat_ptr entry;

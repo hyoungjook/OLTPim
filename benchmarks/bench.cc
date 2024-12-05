@@ -161,8 +161,11 @@ void bench_runner::run() {
   process:
     // force bench_loader to use physical thread and use all the physical threads
     // in the same socket to load (assuming 2HT per core).
+    // if numa_spread, also spread loader threads across numa nodes.
     uint32_t n_loader_threads =
       std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+    ALWAYS_ASSERT(!ermia::config::numa_spread ||
+      n_loader_threads % ermia::config::numa_nodes == 0);
 
     for (uint i = 0; i < loaders.size(); i++) {
       auto *loader = loaders[i];
@@ -177,7 +180,9 @@ void bench_runner::run() {
       // loaders to the number of workers.
       if (loader && !loader->IsImpersonated() &&
           n_running < n_loader_threads &&
-          loader->TryImpersonate()) {
+          (ermia::config::numa_spread ?
+            loader->TryImpersonate(i % ermia::config::numa_nodes) :
+            loader->TryImpersonate())) {
         loader->Start();
         ++n_running;
       }

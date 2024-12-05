@@ -20,6 +20,7 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
 
   virtual void MyWork(char *) override {
     ALWAYS_ASSERT(is_worker);
+    if (FLAGS_ycsb_numa_local) assign_numa_local_table_index();
     tlog = ermia::GetLog();
     workload = get_workload();
     txn_counts.resize(workload.size());

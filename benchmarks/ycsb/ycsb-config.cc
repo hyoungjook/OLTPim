@@ -25,6 +25,7 @@ DEFINE_double(ycsb_zipfian_theta, 0.99, "Zipfian theta (for hot table only)");
 DEFINE_string(ycsb_workload, "C", "Workload: A - H");
 DEFINE_string(ycsb_hot_table_rng, "uniform", "RNG to use to issue ops for the hot table; uniform or zipfian.");
 DEFINE_string(ycsb_read_tx_type, "sequential", "Type of read transaction: sequential or multiget-amac.");
+DEFINE_bool(ycsb_numa_local, false, "Use NUMA-local tables and transactions.");
 
 bool g_hot_table_zipfian = false;
 
@@ -62,8 +63,17 @@ void ycsb_create_db(ermia::Engine *db) {
   ALWAYS_ASSERT(thread);
 
   auto create_table = [=](char *) {
-    db->CreateTable("USERTABLE");
-    db->CreateMasstreePrimaryIndex("USERTABLE", std::string("USERTABLE"));
+    if (!FLAGS_ycsb_numa_local) {
+      db->CreateTable("USERTABLE");
+      db->CreateMasstreePrimaryIndex("USERTABLE", std::string("USERTABLE"));
+    }
+    else {
+      for (int i = 0; i < ermia::config::numa_nodes; ++i) {
+        std::string name = std::string("USERTABLE") + std::to_string(i);
+        db->CreateTable(name.c_str());
+        db->CreateMasstreePrimaryIndex(name.c_str(), name);
+      }
+    }
   };
 
   thread->StartTask(create_table);
@@ -72,16 +82,33 @@ void ycsb_create_db(ermia::Engine *db) {
 }
 
 void ycsb_table_loader::load() {
-  LOG(INFO) << "Loading user table, " << FLAGS_ycsb_hot_table_size << " hot records, " << FLAGS_ycsb_cold_table_size << " cold records.";
-  do_load(open_tables.at("USERTABLE"), "USERTABLE", FLAGS_ycsb_hot_table_size, FLAGS_ycsb_cold_table_size);
+  uint32_t nloaders = std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+  if (!FLAGS_ycsb_numa_local) {
+    LOG(INFO) << "Loading user table, " << FLAGS_ycsb_hot_table_size << " hot records, " << FLAGS_ycsb_cold_table_size << " cold records.";
+    uint64_t hot_to_insert = FLAGS_ycsb_hot_table_size / nloaders;
+    uint64_t cold_to_insert = FLAGS_ycsb_cold_table_size / nloaders;
+    uint64_t hot_start_key = loader_id * hot_to_insert;
+    uint64_t cold_start_key = FLAGS_ycsb_hot_table_size + loader_id * cold_to_insert;
+    do_load(open_tables.at("USERTABLE"), "USERTABLE", hot_to_insert, hot_start_key, cold_to_insert, cold_start_key);
+  }
+  else {
+    ALWAYS_ASSERT(ermia::config::numa_spread);
+    ALWAYS_ASSERT(loader_id % ermia::config::numa_nodes == (uint32_t)me->node);
+    LOG(INFO) << "Loading user table, " << ermia::config::numa_nodes * FLAGS_ycsb_hot_table_size << " hot records, "
+      << ermia::config::numa_nodes * FLAGS_ycsb_cold_table_size << " cold records.";
+    std::string table_name = std::string("USERTABLE") + std::to_string((int)me->node);
+    uint32_t numa_local_loader_id = loader_id / ermia::config::numa_nodes;
+    uint64_t hot_to_insert = ermia::config::numa_nodes * FLAGS_ycsb_hot_table_size / nloaders;
+    uint64_t cold_to_insert = ermia::config::numa_nodes * FLAGS_ycsb_cold_table_size / nloaders;
+    uint64_t hot_start_key = numa_local_loader_id * hot_to_insert;
+    uint64_t cold_start_key = numa_local_loader_id * cold_to_insert;
+    do_load(open_tables.at(table_name), table_name, hot_to_insert, hot_start_key, cold_to_insert, cold_start_key);
+  }
 }
 
-void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name, uint64_t hot_record_count, uint64_t cold_record_count) {
+void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name, 
+    uint64_t hot_to_insert, uint64_t hot_start_key, uint64_t cold_to_insert, uint64_t cold_start_key) {
   uint32_t nloaders = std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
-  int64_t hot_to_insert = hot_record_count / nloaders;
-  int64_t cold_to_insert = cold_record_count / nloaders;
-  uint64_t hot_start_key = loader_id * hot_to_insert;
-  uint64_t cold_start_key = hot_record_count + loader_id * cold_to_insert;
   int64_t to_insert = hot_to_insert + cold_to_insert;
 
   uint64_t kBatchSize = 256;

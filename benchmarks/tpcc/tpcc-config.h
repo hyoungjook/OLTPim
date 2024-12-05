@@ -1554,7 +1554,7 @@ class tpcc_bench_runner : public bench_runner {
 #if defined(OLTPIM)
 #define partition_interval_set(table) \
   ermia::pim::set_index_partition_interval(#table, \
-    tpcc_key64::table##_bits.pim_bits, tpcc_key64::table##_bits.numa_bits)
+    tpcc_key64::table##_bits.pim_bits, false, 0)
     partition_interval_set(customer);
     partition_interval_set(customer_name_idx);
     partition_interval_set(district);

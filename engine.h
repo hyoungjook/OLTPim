@@ -223,17 +223,18 @@ public:
                               ScanCallback &callback, uint32_t max_keys = ~uint32_t{0});
 
 #if defined(OLTPIM)
-  inline void set_key_interval(uint64_t pim_bits, uint64_t numa_bits) {
-    key_interval_pim_bits = pim_bits;
-    key_interval_numa_bits = numa_bits;
-    if (key_interval_numa_bits < key_interval_pim_bits) {
-      std::cerr << "numa_interval should be larger than pim_interval\n";
-      std::abort();
-    }
+  inline void set_key_interval(uint64_t interval_bits, bool numa_local, uint32_t numa_id) {
+    key_interval_bits = interval_bits;
+    is_pim_index_numa_local = numa_local;
+    if (numa_local) pim_index_key_info.numa_local.numa_id = numa_id;
   }
   inline void set_num_pims(uint32_t numas, uint32_t pims_per_numa, uint32_t rand_offset) {
-    num_numas = numas;
-    num_pims_per_numa = pims_per_numa;
+    if (is_pim_index_numa_local) {
+      pim_index_key_info.numa_local.num_pims_per_numa = pims_per_numa;
+    }
+    else {
+      pim_index_key_info.numa_global.num_pims = numas * pims_per_numa;
+    }
     key_interval_offset = rand_offset;
   }
   ermia::coro::task<rc_t> pim_GetRecord(transaction *t, const uint64_t &key, varstr &value);
@@ -281,29 +282,31 @@ public:
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
   }
 
-private:
+public: // TODO private
   PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 #if defined(OLTPIM)
   int index_id;
-  uint64_t key_interval_pim_bits, key_interval_numa_bits;
-  uint64_t key_interval_offset;
-  uint32_t num_pims_per_numa, num_numas;
+  uint64_t key_interval_bits, key_interval_offset;
+  bool is_pim_index_numa_local;
+  union {
+    struct {uint32_t num_pims;} numa_global;
+    struct {uint32_t num_pims_per_numa, numa_id;} numa_local;
+  } pim_index_key_info;
   void assign_index_id();
   inline int pim_id_of(const uint64_t &key) {
-    /**
-     * For a 64-bit key,
-     *  (MSB) |----A-----|--------B--------|-C--| (LSB)
-     *                   ^                 ^
-     *               numa_bits          pim_bits
-     * Region C is ignored, all keys with same (A and B) goes to the same pim module.
-     * Region B determines the pim ID within a numa node.
-     *    If numa-local-key is disabled, Region A and B determines the global pim ID.
-     * Region A determines the numa ID.
-     */
-    const uint32_t numa_id = (key >> key_interval_numa_bits) % num_numas;
-    const uint32_t local_pim_id =
-      (key_interval_offset + (key >> key_interval_pim_bits)) % num_pims_per_numa;
-    return (int)(numa_id * num_pims_per_numa + local_pim_id);
+    if (!is_pim_index_numa_local) {
+      // Spread globally
+      return (int)((key_interval_offset + (key >> key_interval_bits)) %
+        pim_index_key_info.numa_global.num_pims);
+    }
+    else {
+      // Only to numa_id
+      const uint32_t local_pim_id =
+        (key_interval_offset + (key >> key_interval_bits)) %
+        pim_index_key_info.numa_local.num_pims_per_numa;
+      return (int)(pim_index_key_info.numa_local.numa_id *
+        pim_index_key_info.numa_local.num_pims_per_numa + local_pim_id);
+    }
   }
 #endif
 };

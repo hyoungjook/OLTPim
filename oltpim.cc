@@ -39,9 +39,10 @@ void finalize_index_setup() {
 }
 
 void set_index_partition_interval(
-    const char *index_name, uint64_t pim_bits, uint64_t numa_bits) {
+    const char *index_name, uint64_t interval_bits, bool numa_local, uint32_t numa_id) {
   ((ermia::ConcurrentMasstreeIndex*)
-    ermia::TableDescriptor::GetIndex(index_name))->set_key_interval(pim_bits, numa_bits);
+    ermia::TableDescriptor::GetIndex(index_name))->set_key_interval(
+      interval_bits, numa_local, numa_id);
 }
 
 } // namespace pim
@@ -317,7 +318,7 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t &start_key, con
   const size_t scan_req_size = callback.scan_req_storage_size(); 
   const int pim_id_end = pim_id_of(end_key);
   int cnt = 0;
-  const uint64_t key_interval = (1UL << key_interval_pim_bits);
+  const uint64_t key_interval = (1UL << key_interval_bits);
   for (
       uint64_t begin_key = start_key & (~(key_interval - 1));
       begin_key <= end_key; begin_key += key_interval, ++cnt) {
