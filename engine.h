@@ -282,7 +282,7 @@ public:
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
   }
 
-public: // TODO private
+private:
   PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 #if defined(OLTPIM)
   int index_id;
