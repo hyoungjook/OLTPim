@@ -77,17 +77,11 @@ public:
   }
 
 #if defined(OLTPIM)
-  inline ermia::coro::task<rc_t> Commit(transaction *t) {
-    rc_t rc = co_await t->commit();
-    co_return rc;
-  }
-  
-  inline ermia::coro::task<rc_t> Abort(transaction *t) {
-    co_await t->Abort();
-    t->uninitialize();
-    co_return {RC_TRUE};
-  }
+#define ENGINE_COMMIT(db, txn) (txn)->oltpim_commit()
+#define ENGINE_ABORT(db, txn) (txn)->oltpim_abort()
 #else
+#define ENGINE_COMMIT(db, txn) (db)->Commit(txn)
+#define ENGINE_ABORT(db, txn) (db)->Abort(txn)
   inline rc_t Commit(transaction *t) {
     rc_t rc = t->commit();
     return rc;

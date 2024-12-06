@@ -395,7 +395,7 @@ class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
                                               Encode(str(Size(v)), v)));
 #endif
     }
-    TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+    TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
     LOG(INFO) << "Finished loading nation";
     LOG(INFO) << "  * total/average nation record length: "
          << total_sz << "/" << (double(total_sz) / double(62)) << " bytes";
@@ -430,7 +430,7 @@ class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
 #endif
       total_sz += Size(v);
     }
-    TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+    TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
     LOG(INFO) << "Finished loading region";
     LOG(INFO) << "  * total/average region record length: "
          << total_sz << "/" << (double(total_sz) / double(5)) << " bytes";
@@ -475,7 +475,7 @@ class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
                                                 Encode(str(Size(v)), v)));
 #endif
 
-      TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+      TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
       total_sz += Size(v);
     }
     LOG(INFO) << "Finished loading supplier";
@@ -536,7 +536,7 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
 #endif
 
       warehouses.push_back(v);
-      TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+      TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
     }
     for (uint i = 1; i <= NumWarehouses(); i++) {
       arena->reset();
@@ -560,7 +560,7 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
 #ifndef NDEBUG
       checker::SanityCheckWarehouse(&k, v);
 #endif
-      TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+      TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
     }
 
     // pre-build supp-stock mapping table to boost tpc-ch queries
@@ -648,7 +648,7 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
         }
 #endif
       }
-      TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+      TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
     }
     if (ermia::config::verbose) {
       LOG(INFO) << "Finished loading item";
@@ -751,7 +751,7 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
                                         Encode(str(Size(v_data)), v_data)));
 #endif
         }
-        TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+        TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
       }
     }
     if (warehouse_id == -1) {
@@ -817,7 +817,7 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
                                                   Encode(str(sz), v)));
 #endif
 
-        TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+        TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
       }
     }
     if (ermia::config::verbose) {
@@ -953,7 +953,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 #endif
 #endif // !defined(OLTPIM)
           }
-          TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+          TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
 
           arena->reset();
           txn = db->NewTransaction(0, *arena, txn_buf());
@@ -989,7 +989,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 #endif
 #endif // !defined(OLTPIM)
           }
-          TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+          TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
         }
       }
     }
@@ -1161,7 +1161,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
 #endif // !defined(OLTPIM)
             }
           }
-          TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+          TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
 
           for (uint j_out = 0; j_out < num; j_out += ol_batchsize) {
             const uint num_oos = std::min<uint>(ol_batchsize, num - j_out);
@@ -1222,7 +1222,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
 #endif // !defined(OLTPIM)
               }
             }
-            TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+            TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
           }
         }
       }

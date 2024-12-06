@@ -251,7 +251,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     }
 
     if (!ermia::config::index_probe_only) {
-      rc_t rc = co_await db->Commit(txn);
+      rc_t rc = co_await txn->oltpim_commit();
       TryCatchOltpim(rc);
     }
 
@@ -274,7 +274,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
       ALWAYS_ASSERT(*(char *)v.data() == 'a');
     }
-    rc = co_await db->Commit(txn);
+    rc = co_await txn->oltpim_commit();
     TryCatchOltpim(rc);
     co_return {RC_TRUE};
   }
@@ -319,7 +319,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     }
 
 #ifndef CORO_BATCH_COMMIT
-    rc_t rc = co_await db->Commit(txn);
+    rc_t rc = co_await txn->oltpim_commit();
     TryCatchOltpim(rc);
 #endif
     co_return {RC_TRUE};
@@ -344,7 +344,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     TryCatchOltpim(rc);
 
 #ifndef CORO_BATCH_COMMIT
-    rc = co_await db->Commit(txn);
+    rc = co_await txn->oltpim_commit();
     TryCatchOltpim(rc);
 #endif
     co_return {RC_TRUE};
@@ -486,7 +486,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
         rc_t rc = std::get<0>(task_queue[i]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
         if (!rc.IsAbort()) {
-          rc = co_await db->Commit(&transactions[i]);
+          rc = co_await transactions[i].oltpim_commit();
         }
 #endif
         finish_workload(rc, task_workload_idxs[i], ts[i]);
@@ -623,7 +623,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
 
 #ifdef CORO_BATCH_COMMIT
           if (!rc.IsAbort()) {
-            rc = co_await db->Commit(&transactions[coro_task_id]);
+            rc = co_await transactions[coro_task_id].oltpim_commit();
           }
 #endif
           finish_workload(rc, task_workload_idxs[coro_task_id], ts[coro_task_id]);
@@ -653,7 +653,7 @@ coldq:
               rc_t rc = std::get<0>(cold_queue[cold_queue_idx]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
               if (!rc.IsAbort()) {
-                rc = co_await db->Commit(&transactions[coro_task_id]);
+                rc = co_await transactions[coro_task_id].oltpim_commit();
               }
 #endif
               finish_workload(rc, task_workload_idxs[coro_task_id], ts[coro_task_id]);

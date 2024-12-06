@@ -343,7 +343,7 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
 
 #define __abort_txn_oltpim(r)                     \
 {                                                 \
-  co_await db->Abort(txn);                        \
+  co_await (txn)->oltpim_abort();                 \
   if (!r.IsAbort()) co_return {RC_ABORT_USER};    \
   co_return r;                                    \
 }
@@ -419,6 +419,14 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   LOG_IF(FATAL, r._val != RC_TRUE && !r.IsAbort()) \
     << "Wrong return value " << r._val;            \
   if (r.IsAbort()) __abort_txn_coro(r);            \
+}
+
+#define TryVerifyRelaxedOltpim(oper)               \
+{                                                  \
+  rc_t r = oper;                                   \
+  LOG_IF(FATAL, r._val != RC_TRUE && !r.IsAbort()) \
+    << "Wrong return value " << r._val;            \
+  if (r.IsAbort()) __abort_txn_oltpim(r);          \
 }
 
 // No abort is allowed, usually for loading

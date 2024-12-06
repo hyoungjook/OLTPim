@@ -146,7 +146,7 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
 #endif // !defined(OLTPIM)
 
     }
-    TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+    TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
   }
 
 #if !defined(OLTPIM)
@@ -169,7 +169,7 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
 #endif
 
     if ((i + 1) % kBatchSize == 0 || i == cold_to_insert - 1) {
-      TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+      TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
       if (i != cold_to_insert - 1) {
         txn = db->NewTransaction(0, *arena, txn_buf());
       }
@@ -219,7 +219,7 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
 #endif // !defined(OLTPIM)
       ALWAYS_ASSERT(*(char *)v.data() == 'a');
     }
-    TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+    TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
   }
 
 #if !defined(OLTPIM)
@@ -240,7 +240,7 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
     TryVerifyStrict(rc);
 
     if ((i + 1) % kBatchSize == 0 || i == cold_to_insert - 1) {
-      TryVerifyStrict(COMMIT_SYNC(db->Commit(txn)));
+      TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
       if (i != cold_to_insert - 1) {
         txn = db->NewTransaction(0, *arena, txn_buf());
       }

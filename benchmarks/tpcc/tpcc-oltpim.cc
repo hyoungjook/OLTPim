@@ -258,7 +258,7 @@ class tpcc_oltpim_worker : public bench_worker, public tpcc_worker_mixin {
         rc_t rc = std::get<0>(task_queue[i]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
         if (!rc.IsAbort()) {
-          rc = co_await db->Commit(&transactions[i]);
+          rc = co_await transactions[i].oltpim_commit();
         }
 #endif
         finish_workload(rc, task_workload_idxs[i], ts[i]);
@@ -360,7 +360,7 @@ class tpcc_oltpim_worker : public bench_worker, public tpcc_worker_mixin {
         rc_t rc = std::get<0>(task_queue[i]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
         if (!rc.IsAbort()) {
-          rc = co_await db->Commit(&transactions[i]);
+          rc = co_await transactions[i].oltpim_commit();
         }
 #endif
         finish_workload(rc, task_workload_idxs[i], ts[i]);
@@ -506,7 +506,7 @@ class tpcc_oltpim_worker : public bench_worker, public tpcc_worker_mixin {
 
 #ifdef CORO_BATCH_COMMIT
           if (!rc.IsAbort()) {
-            rc = co_await db->Commit(&transactions[coro_task_id]);
+            rc = co_await transactions[coro_task_id].oltpim_commit();
           }
 #endif
           finish_workload(rc, task_workload_idxs[coro_task_id], ts[coro_task_id]);
@@ -536,7 +536,7 @@ coldq:
               rc_t rc = std::get<0>(cold_queue[cold_queue_idx]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
               if (!rc.IsAbort()) {
-                rc = co_await db->Commit(&transactions[coro_task_id]);
+                rc = co_await transactions[coro_task_id].oltpim_commit();
               }
 #endif
               finish_workload(rc, task_workload_idxs[coro_task_id], ts[coro_task_id]);
@@ -745,7 +745,7 @@ coldq:
 
 #ifdef CORO_BATCH_COMMIT
         if (!rc.IsAbort()) {
-          rc = co_await db->Commit(&transactions[coro_task_id]);
+          rc = co_await transactions[coro_task_id].oltpim_commit();
         }
 #endif
         if (task_workload_idxs[coro_task_id] == 1) {
@@ -776,7 +776,7 @@ coldq:
               rc_t rc = std::get<0>(cold_queue[cold_queue_idx]).get_return_value();
 #ifdef CORO_BATCH_COMMIT
               if (!rc.IsAbort()) {
-                rc = co_await db->Commit(&transactions[coro_task_id]);
+                rc = co_await transactions[coro_task_id].oltpim_commit();
               }
 #endif
               if (task_workload_idxs[coro_task_id] == 1) {
@@ -964,7 +964,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
   customer::value v_c_temp;
 
   rc = co_await tbl_customer(warehouse_id)->pim_GetRecord(txn, pk_c, valptr);
-  TryVerifyRelaxedCoro(rc);
+  TryVerifyRelaxedOltpim(rc);
 
   const customer::value *v_c = Decode(valptr, v_c_temp);
 
@@ -977,7 +977,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
   warehouse::value v_w_temp;
 
   rc = co_await tbl_warehouse(warehouse_id)->pim_GetRecord(txn, pk_w, valptr);
-  TryVerifyRelaxedCoro(rc);
+  TryVerifyRelaxedOltpim(rc);
 
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
@@ -989,7 +989,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
   district::value v_d_temp;
 
   rc = co_await tbl_district(warehouse_id)->pim_GetRecord(txn, pk_d, valptr);
-  TryVerifyRelaxedCoro(rc);
+  TryVerifyRelaxedOltpim(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -1051,7 +1051,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
     item::value v_i_temp;
 
     rc = co_await tbl_item(1)->pim_GetRecord(txn, pk_i, valptr);
-    TryVerifyRelaxedCoro(rc);
+    TryVerifyRelaxedOltpim(rc);
 
     const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
@@ -1063,7 +1063,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
     stock::value v_s_temp;
 
     rc = co_await tbl_stock(ol_supply_w_id)->pim_GetRecord(txn, pk_s, valptr);
-    TryVerifyRelaxedCoro(rc);
+    TryVerifyRelaxedOltpim(rc);
     const stock::value *v_s = Decode(valptr, v_s_temp);
 
 #ifndef NDEBUG
@@ -1101,7 +1101,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
   }
 
 #ifndef CORO_BATCH_COMMIT
-  rc = co_await db->Commit(txn);
+  rc = co_await txn->oltpim_commit();
   TryCatchOltpim(rc);
 #endif
   co_return {RC_TRUE};
@@ -1150,7 +1150,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
   rc_t rc = rc_t{RC_INVALID};
 
   rc = co_await tbl_warehouse(warehouse_id)->pim_GetRecord(txn, pk_w, valptr);
-  TryVerifyRelaxedCoro(rc);
+  TryVerifyRelaxedOltpim(rc);
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
 
 #ifndef NDEBUG
@@ -1169,7 +1169,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
   district::value v_d_temp;
 
   rc = co_await tbl_district(warehouse_id)->pim_GetRecord(txn, pk_d, valptr);
-  TryVerifyRelaxedCoro(rc);
+  TryVerifyRelaxedOltpim(rc);
 
   valptr.prefetch();
   co_await suspend_always{};
@@ -1226,7 +1226,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
     k_c.c_id = customerID;
     pk_c = tpcc_key64::customer(k_c);
     rc = co_await tbl_customer(customerWarehouseID)->pim_GetRecord(txn, pk_c, valptr);
-    TryVerifyRelaxedCoro(rc);
+    TryVerifyRelaxedOltpim(rc);
     Decode(valptr, v_c);
   }
 
@@ -1271,7 +1271,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
   TryCatchOltpim(rc);
 
 #ifndef CORO_BATCH_COMMIT
-  rc = co_await db->Commit(txn);
+  rc = co_await txn->oltpim_commit();
   TryCatchOltpim(rc);
 #endif
   co_return {RC_TRUE};
@@ -1404,7 +1404,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
     customer::value v_c_temp;
 
     rc = co_await tbl_customer(warehouse_id)->pim_GetRecord(txn, pk_c, valptr);
-    TryVerifyRelaxedCoro(rc);
+    TryVerifyRelaxedOltpim(rc);
 
     // XXX(tzwang): prefetch valptr here doesn't help (100% delivery)
     const customer::value *v_c = Decode(valptr, v_c_temp);
@@ -1417,7 +1417,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
   }
 
 #ifndef CORO_BATCH_COMMIT
-  rc = co_await db->Commit(txn);
+  rc = co_await txn->oltpim_commit();
   TryCatchOltpim(rc);
 #endif
 
@@ -1499,7 +1499,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_order_status(ermia::transaction 
     pk_c = tpcc_key64::customer(k_c);
 
     rc = co_await tbl_customer(warehouse_id)->pim_GetRecord(txn, pk_c, valptr);
-    TryVerifyRelaxedCoro(rc);
+    TryVerifyRelaxedOltpim(rc);
     valptr.prefetch();
     co_await suspend_always{};
     Decode(valptr, v_c);
@@ -1542,7 +1542,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_order_status(ermia::transaction 
   ALWAYS_ASSERT(c_order_line.size() >= 5 && c_order_line.size() <= 15);
 
 #ifndef CORO_BATCH_COMMIT
-  rc = co_await db->Commit(txn);
+  rc = co_await txn->oltpim_commit();
   TryCatchOltpim(rc);
 #endif
 
@@ -1582,7 +1582,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_stock_level(ermia::transaction *
   ermia::varstr valptr;
 
   rc = co_await tbl_district(warehouse_id)->pim_GetRecord(txn, pk_d, valptr);
-  TryVerifyRelaxedCoro(rc);
+  TryVerifyRelaxedOltpim(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -1618,7 +1618,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_stock_level(ermia::transaction *
     ASSERT(v_ol.ol_i_id >= 1 && v_ol.ol_i_id <= NumItems());
 
     rc = co_await tbl_stock(warehouse_id)->pim_GetRecord(txn, pk_s, valptr);
-    TryVerifyRelaxedCoro(rc);
+    TryVerifyRelaxedOltpim(rc);
 
     const uint8_t *ptr = (const uint8_t *)valptr.data();
     int16_t i16tmp;
@@ -1628,7 +1628,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_stock_level(ermia::transaction *
   // NB(stephentu): s_i_ids_distinct.size() is the computed result of this txn
 
 #ifndef CORO_BATCH_COMMIT
-  rc = co_await db->Commit(txn);
+  rc = co_await txn->oltpim_commit();
   TryCatchOltpim(rc);
 #endif
 
