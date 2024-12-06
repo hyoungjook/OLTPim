@@ -62,10 +62,10 @@ ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t &key,
   auto *xc = t->xc;
   auto *req = (oltpim::request_get*)req_;
   auto &args = req->args;
-  args.index_id = index_id;
-  args.oid_query = 0;
   args.key = key;
-  args.xid = (xc->owner._val) >> 16;
+  args.xid_s.xid = (xc->owner._val) >> 16;
+  args.xid_s.index_id = index_id;
+  args.xid_s.oid_query = 0;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, req);
@@ -78,14 +78,14 @@ ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *r
     co_await std::suspend_always{};
   }
   auto &rets = req->rets;
-  auto status = rets.status;
+  auto status = REQ_GET_STATUS(rets.value_status);
   CHECK_VALID_STATUS(status);
   rc_t rc;
   if (status != STATUS_SUCCESS) {
     rc = (status == STATUS_FAILED) ? rc_t{RC_FALSE} : rc_t{RC_ABORT_SI_CONFLICT};
     co_return rc;
   }
-  fat_ptr obj = {rets.value};
+  fat_ptr obj = {rets.value_status};
   auto *tuple = (dbtuple*)((Object*)obj.offset())->GetPayload();
   value.p = tuple->get_value_start();
   value.l = tuple->size;
@@ -99,10 +99,10 @@ ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t &key, vars
 
   oltpim::request_get req;
   auto &args = req.args;
-  args.index_id = index_id;
-  args.oid_query = 0;
   args.key = key;
-  args.xid = (xc->owner._val) >> 16;
+  args.xid_s.xid = (xc->owner._val) >> 16;
+  args.xid_s.index_id = index_id;
+  args.xid_s.oid_query = 0;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, &req);
@@ -112,13 +112,18 @@ ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t &key, vars
   auto &rets = req.rets;
 
   if (!IsPrimary()) { // Secondary
+    auto status = REQ_GET_STATUS(rets.value_status);
+    if (status != STATUS_SUCCESS) {
+      rc = (status == STATUS_FAILED) ? rc_t{RC_FALSE} : rc_t{RC_ABORT_SI_CONFLICT};
+      co_return rc;
+    }
     // Query again with the same req struct
-    pim_id = (int)SVALUE_GET_PIMID(rets.value);
-    uint32_t local_oid = SVALUE_GET_OID(rets.value);
-    args.index_id = ((ConcurrentMasstreeIndex*)table_descriptor->GetPrimaryIndex())->index_id;
-    args.oid_query = 1;
+    pim_id = (int)SVALUE_GET_PIMID(rets.value_status);
+    uint32_t local_oid = SVALUE_GET_OID(rets.value_status);
     args.key = (uint64_t)local_oid;
-    args.xid = (xc->owner._val) >> 16;
+    args.xid_s.xid = (xc->owner._val) >> 16;
+    args.xid_s.index_id = ((ConcurrentMasstreeIndex*)table_descriptor->GetPrimaryIndex())->index_id;
+    args.xid_s.oid_query = 1;
     args.csn = xc->begin;
     // reuse req; already points to correct args and rets
     oltpim::engine::g_engine.push(pim_id, &req);
@@ -127,12 +132,13 @@ ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t &key, vars
     }
   }
 
-  CHECK_VALID_STATUS(rets.status);
-  if (rets.status != STATUS_SUCCESS) {
-    rc = (rets.status == STATUS_FAILED) ? rc_t{RC_FALSE} : rc_t{RC_ABORT_SI_CONFLICT};
+  auto status = REQ_GET_STATUS(rets.value_status);
+  CHECK_VALID_STATUS(status);
+  if (status != STATUS_SUCCESS) {
+    rc = (status == STATUS_FAILED) ? rc_t{RC_FALSE} : rc_t{RC_ABORT_SI_CONFLICT};
     co_return rc;
   }
-  fat_ptr obj = {rets.value};
+  fat_ptr obj = {rets.value_status};
   auto *tuple = (dbtuple*)((Object*)obj.offset())->GetPayload();
   value.p = tuple->get_value_start();
   value.l = tuple->size;
@@ -148,10 +154,10 @@ ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t &k
   fat_ptr new_obj = Object::Create(&value, xc->begin_epoch);
   auto *req = (oltpim::request_insert*)req_;
   auto &args = req->args;
-  args.index_id = index_id;
   args.key = key;
   args.value = new_obj._ptr;
-  args.xid = (xc->owner._val) >> 16;
+  args.xid_s.xid = (xc->owner._val) >> 16;
+  args.xid_s.index_id = index_id;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, req);
@@ -194,10 +200,10 @@ ConcurrentMasstreeIndex::pim_InsertOIDBegin(transaction *t, const uint64_t &key,
   auto *xc = t->xc;
   auto *req = (oltpim::request_insert*)req_;
   auto &args = req->args;
-  args.index_id = index_id;
   args.key = key;
   args.value = oid;
-  args.xid = (xc->owner._val) >> 16;
+  args.xid_s.xid = (xc->owner._val) >> 16;
+  args.xid_s.index_id = index_id;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, req);
@@ -234,10 +240,10 @@ ConcurrentMasstreeIndex::pim_UpdateRecordBegin(
   fat_ptr new_obj = Object::Create(&value, xc->begin_epoch);
   auto *req = (oltpim::request_update*)req_;
   auto &args = req->args;
-  args.index_id = index_id;
   args.key = key;
   args.new_value = new_obj._ptr;
-  args.xid = (xc->owner._val) >> 16;
+  args.xid_s.xid = (xc->owner._val) >> 16;
+  args.xid_s.index_id = index_id;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, req);
@@ -281,9 +287,9 @@ ConcurrentMasstreeIndex::pim_RemoveRecord(transaction *t, const uint64_t &key) {
   auto *xc = t->xc;
   oltpim::request_remove req;
   auto &args = req.args;
-  args.index_id = index_id;
   args.key = key;
-  args.xid = (xc->owner._val) >> 16;
+  args.xid_s.xid = (xc->owner._val) >> 16;
+  args.xid_s.index_id = index_id;
   args.csn = xc->begin;
   int pim_id = pim_id_of(key);
   oltpim::engine::g_engine.push(pim_id, &req);
@@ -357,10 +363,10 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t &start_key, con
       for (uint32_t j = 0; j < rets.base.outs; ++j) {
         const uint64_t ret_value = rets.values[j];
         auto &args = get_reqs[cnt2].args;
-        args.index_id = primary_index_id;
-        args.oid_query = 1;
         args.key = (uint64_t)SVALUE_GET_OID(ret_value);
-        args.xid = xid;
+        args.xid_s.xid = xid;
+        args.xid_s.index_id = primary_index_id;
+        args.xid_s.oid_query = 1;
         args.csn = csn;
         oltpim::engine::g_engine.push((int)SVALUE_GET_PIMID(ret_value), &get_reqs[cnt2]);
         ++cnt2;
@@ -373,7 +379,7 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t &start_key, con
       }
     }
     for (int i = 0; i < cnt2; ++i) {
-      auto status = get_reqs[i].rets.status;
+      auto status = REQ_GET_STATUS(get_reqs[i].rets.value_status);
       CHECK_VALID_STATUS(status);
       if (status != STATUS_SUCCESS) {
         uint16_t rc = (status == STATUS_FAILED) ? RC_FALSE : RC_ABORT_SI_CONFLICT;
@@ -381,7 +387,7 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t &start_key, con
       }
     }
     for (int i = 0; i < cnt2; ++i) {
-      fat_ptr obj = {get_reqs[i].rets.value};
+      fat_ptr obj = {get_reqs[i].rets.value_status};
       auto *tuple = (dbtuple*)((Object*)obj.offset())->GetPayload();
       varstr value(tuple->get_value_start(), tuple->size);
       if (!callback.Invoke(value)) break;
