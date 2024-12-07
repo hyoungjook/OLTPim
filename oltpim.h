@@ -20,15 +20,15 @@ void set_index_partition_interval(
 
 struct log_record_t {
   fat_ptr entry;
-  uint32_t index_id;
-  uint32_t pim_id;
+  bool is_insert;
+  uint8_t index_id;
+  uint16_t pim_id;
   uint32_t oid;
   uint64_t size;
-  bool is_insert;
   // Don't do anything on constructor here. It becomes bottleneck on large coro-batch-size.
   log_record_t() {}
-  log_record_t(fat_ptr entry, uint32_t index_id, uint32_t pim_id, uint32_t oid, uint64_t size, bool insert)
-    : entry(entry), index_id(index_id), pim_id(pim_id), oid(oid), size(size), is_insert(insert) {}
+  log_record_t(fat_ptr entry, uint8_t index_id, uint16_t pim_id, uint32_t oid, uint64_t size, bool insert)
+    : entry(entry), is_insert(insert), index_id(index_id), pim_id(pim_id), oid(oid), size(size) {}
   inline Object *get_object() {return (Object*)entry.offset();}
 };
 
@@ -45,8 +45,6 @@ struct write_set_t {
   inline uint32_t size() {return num_entries;}
   inline void clear() {num_entries = 0;}
   inline log_record_t &operator[](uint32_t idx) {return entries[idx];}
-  // Buffer for oltpim::request_commit,abort
-  uint8_t req_buffer[sizeof(oltpim::request_commit) * kMaxEntries];
 };
 static_assert(sizeof(oltpim::request_commit) >= sizeof(oltpim::request_abort), "");
 

@@ -172,6 +172,9 @@ public:
   inline str_arena &string_allocator() { return *sa; }
 
   inline void add_to_write_set(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert, bool cold) {
+#if defined(OLTPIM)
+    ALWAYS_ASSERT(false);
+#else
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set[i];
@@ -187,6 +190,7 @@ public:
     // be inserted to the log excluding dlog::log_record, which will be
     // prepended by log_insert/update etc.
     write_set.emplace_back(entry, fid, oid, size + sizeof(dbtuple), insert, cold);
+#endif
   }
 
 #if defined(OLTPIM)
@@ -256,10 +260,6 @@ public:
   uint32_t log_size;
   str_arena *sa;
   uint32_t coro_batch_idx; // its index in the batch
-#if defined(OLTPIM)
-  ermia::pim::write_set_t pim_write_set;
-#endif
-  write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;
 #endif
@@ -270,6 +270,14 @@ public:
   uint16_t pos_in_queue;
   size_t cold_log_io_size;
   int io_uring_user_data[1];
+#if defined(OLTPIM)
+  ermia::pim::write_set_t pim_write_set;
+  // pim_request_buffer should be the last member
+  uint8_t pim_request_buffer[
+    sizeof(oltpim::request_commit) * ermia::pim::write_set_t::kMaxEntries];
+#else
+  write_set_t write_set;
+#endif
 };
 
 }  // namespace ermia

@@ -106,7 +106,7 @@ void transaction::uninitialize() {
 rc_t transaction::Abort() {
 #if defined(OLTPIM)
   ALWAYS_ASSERT(false); // call oltpim_abort() instead
-#endif
+#else
   // Mark the dirty tuple as invalid, for oid_get_version to
   // move on more quickly.
   volatile_write(xc->state, TXN::TXN_ABRTD);
@@ -145,12 +145,13 @@ rc_t transaction::Abort() {
   }
 
   return {RC_TRUE};
+#endif
 }
 
 rc_t transaction::commit() {
 #if defined(OLTPIM)
   ALWAYS_ASSERT(false); // call oltpim_commit() instead
-#endif
+#else
   ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE);
   volatile_write(xc->state, TXN::TXN_COMMITTING);
   rc_t ret;
@@ -194,6 +195,7 @@ rc_t transaction::commit() {
   }
 
   return ret;
+#endif
 }
 
 #if defined(OLTPIM)
@@ -201,7 +203,7 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
   // Mark the dirty tuple as invalid, for oid_get_version to
   // move on more quickly.
   volatile_write(xc->state, TXN::TXN_ABRTD);
-  auto *reqs = (oltpim::request_abort*)&pim_write_set.req_buffer;
+  auto *reqs = (oltpim::request_abort*)pim_request_buffer;
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     auto &w = pim_write_set[i];
     if (w.entry._ptr != 0) MM::deallocate(w.entry);
@@ -242,7 +244,7 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
     }
 
     // Post-commit
-    auto *reqs = (oltpim::request_commit*)&pim_write_set.req_buffer;
+    auto *reqs = (oltpim::request_commit*)pim_request_buffer;
     for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
       auto &w = pim_write_set[i];
       dbtuple fake_tuple(0);
