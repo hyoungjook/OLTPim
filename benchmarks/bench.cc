@@ -12,6 +12,7 @@
 #include <sys/wait.h>
 
 #include "bench.h"
+#include "perf.h"
 
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-config.h"
@@ -23,6 +24,17 @@ volatile uint64_t committed_txn_count = 0;
 std::vector<bench_worker *> bench_runner::workers;
 
 thread_local ermia::epoch_num coroutine_batch_end_epoch = 0;
+
+static ermia::perf::InProcessPerf in_process_perf;
+namespace ermia::perf {
+void Initialize() {
+  // this should be done before thread::Initialize()
+  if (ermia::config::measure_llc_miss) {
+    in_process_perf.add_event(ermia::perf::PERF_EVENT_LLC_LOAD_MISSES);
+    in_process_perf.add_event(ermia::perf::PERF_EVENT_LLC_STORE_MISSES);
+  }
+}
+}
 
 void bench_worker::do_workload_function(uint32_t i) {
   ASSERT(workload.size());
@@ -269,15 +281,11 @@ void bench_runner::start_measurement() {
       perf_pid = pid;
     }
   }
-  pid_t perf_energy_pid;
+  pid_t energy_perf_pid;
   if (ermia::config::measure_energy) {
-    std::cerr << "start energy perf..." << std::endl;
-    pid_t pid = fork();
-    if (pid == 0) {
-      exit(execl("/usr/bin/perf", "perf", "stat", "-e", "power/energy-pkg/,power/energy-ram/", nullptr));
-    }
-    else {
-      perf_energy_pid = pid;
+    energy_perf_pid = fork();
+    if (energy_perf_pid == 0) {
+      exit(execl("/usr/bin/perf", "perf", "stat", "-a", "-e", "power/energy-pkg/,power/energy-ram/", nullptr));
     }
   }
 
@@ -338,6 +346,7 @@ void bench_runner::start_measurement() {
   };
 
   util::timer t, t_nosync;
+  in_process_perf.start();
   barrier_b.count_down();  // bombs away!
 
   double total_util = 0;
@@ -390,6 +399,7 @@ void bench_runner::start_measurement() {
       gather_stats();
     }
 
+    in_process_perf.stop();
     running = false;
   } else {
     // Operation-based benchmark.
@@ -427,9 +437,8 @@ void bench_runner::start_measurement() {
   const unsigned long elapsed_nosync = t_nosync.lap();
 
   if (ermia::config::measure_energy) {
-    std::cerr << "stop energy perf..." << std::endl;
-    kill(perf_energy_pid, SIGINT);
-    waitpid(perf_energy_pid, nullptr, 0);
+    kill(energy_perf_pid, SIGINT);
+    waitpid(energy_perf_pid, nullptr, 0);
   }
   if (ermia::config::enable_perf) {
     std::cerr << "stop perf..." << std::endl;
@@ -513,6 +522,14 @@ void bench_runner::start_measurement() {
     }
   }
 
+  uint64_t llc_miss_ld = 0, llc_miss_st = 0;
+  double llc_miss_per_txn = 0;
+  if (ermia::config::measure_llc_miss) {
+    llc_miss_ld = in_process_perf.measure(ermia::perf::PERF_EVENT_LLC_LOAD_MISSES);
+    llc_miss_st = in_process_perf.measure(ermia::perf::PERF_EVENT_LLC_STORE_MISSES);
+    llc_miss_per_txn = (double)(llc_miss_ld + llc_miss_st) / n_txns;
+  }
+
   //if (ermia::config::enable_chkpt) {
   //  delete ermia::chkptmgr;
   //}
@@ -550,7 +567,13 @@ void bench_runner::start_measurement() {
   std::cout << n_txns << " total_txns, "
        << agg_throughput << " txns/s, "
        << avg_latency_ms << " latency.avg(ms), "
-       << p99_latency_ms << " latency.p99(ms), " << std::endl;
+       << p99_latency_ms << " latency.p99(ms), ";
+  if (ermia::config::measure_llc_miss) {
+    std::cout << llc_miss_ld << " llc-load-misses, "
+          << llc_miss_st << " llc-store-misses, "
+          << llc_miss_per_txn << " llc-misses-per-txn ";
+  }
+  std::cout << std::endl;
   std::cout << "---------------------------------------\n";
   std::cout << agg_abort_rate << " total_aborts/s, " << agg_system_abort_rate
        << " system_aborts/s, " << agg_user_abort_rate << " user_aborts/s, "
