@@ -24,6 +24,10 @@ using google::dense_hash_map;
 #if defined(OLTPIM)
 #include "dbcore/sm-coroutine.h"
 #include "oltpim.h"
+
+// Only supports YCSB-C!!
+//#define OLTPIM_OFFLOAD_INDEX_ONLY
+
 #endif
 
 #if defined(OLTPIM)

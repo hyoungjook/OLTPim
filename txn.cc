@@ -203,22 +203,32 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
   // Mark the dirty tuple as invalid, for oid_get_version to
   // move on more quickly.
   volatile_write(xc->state, TXN::TXN_ABRTD);
+#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
   auto *reqs = (oltpim::request_abort*)pim_request_buffer;
+#endif
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     auto &w = pim_write_set[i];
     if (w.entry._ptr != 0) MM::deallocate(w.entry);
+#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
     // abort to pim
     new (&reqs[i]) oltpim::request_abort;
     auto &args = reqs[i].args;
     args.xid = (xid._val) >> 16;
     oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
+#else
+    Object *obj = w.get_object();
+    obj->SetCSN(NULL_PTR);
+    oidmgr->UnlinkTuple(w.entry);
+#endif
   }
+#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
   // TODO remove waiting
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
       co_await std::suspend_always{};
     }
   }
+#endif
   uninitialize();
   co_return {RC_TRUE};
 }
@@ -244,19 +254,27 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
     }
 
     // Post-commit
+#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
     auto *reqs = (oltpim::request_commit*)pim_request_buffer;
+#endif
     for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
       auto &w = pim_write_set[i];
       dbtuple fake_tuple(0);
-      dbtuple *tuple = (w.entry._ptr != 0) ? (dbtuple*)(w.get_object()->GetPayload()) : &fake_tuple;
+      Object *object = w.get_object();
+      dbtuple *tuple = (w.entry._ptr != 0) ? (dbtuple*)(object->GetPayload()) : &fake_tuple;
       uint32_t off = lb->payload_size;
 
       // commit to pim
+#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
       new (&reqs[i]) oltpim::request_commit;
       auto &args = reqs[i].args;
       args.xid = (xid._val) >> 16;
       args.csn = xc->end;
       oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
+#else
+      fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+      object->SetCSN(csn_ptr);
+#endif
 
       // hack: pack index_id and pim_id to fid
       const uint32_t fid = (w.index_id << 16) | (w.pim_id);
@@ -271,12 +289,14 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
       ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
     }
     ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
+#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
     // TODO remove waiting
     for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
       while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
         co_await std::suspend_always{};
       }
     }
+#endif
   
     // NOTE: make sure this happens after populating log block,
     // otherwise readers will see inconsistent data!
