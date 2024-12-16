@@ -80,7 +80,8 @@ void tls_committer::dequeue_committed_xcts() {
     if (volatile_read(entry.csn) > upto_csn) {
       break;
     }
-    _commit_queue->total_latency_us += end_time - entry.start_time;
+    if (record_latency)
+      _commit_queue->record_latency(end_time - entry.start_time);
     dequeue++;
   }
   _commit_queue->items -= dequeue;

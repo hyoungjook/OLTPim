@@ -225,11 +225,16 @@ void bench_runner::run() {
   if (ermia::config::pcommit) {
     ermia::dlog::dequeue_committed_xcts();
     // Sanity check to make sure all transactions are fully committed
-    if (!ermia::config::null_log_device) {
+    if (!ermia::dlog::null_log_device) {
       for (auto &tlog : ermia::dlog::tlogs) {
         LOG_IF(FATAL, tlog->get_commit_queue_size() > 0);
       }
     }
+    // Enable latency recording
+    ermia::dlog::set_record_latency(true);
+  }
+  if (!ermia::config::null_log_device && ermia::config::null_log_during_init) {
+    ermia::dlog::null_log_device = false;
   }
 
   // if (ermia::config::enable_chkpt) {
@@ -456,7 +461,7 @@ void bench_runner::start_measurement() {
   size_t n_phantom_aborts = 0;
   size_t n_query_commits = 0;
   uint64_t latency_numer_us = 0;
-  bench_worker::histogram latency_hist_us;
+  ermia::histogram_counter latency_hist_us;
   for (size_t i = 0; i < ermia::config::worker_threads; i++) {
     n_commits += workers[i]->get_ntxn_commits();
     n_aborts += workers[i]->get_ntxn_aborts();
@@ -469,6 +474,7 @@ void bench_runner::start_measurement() {
     n_query_commits += workers[i]->get_ntxn_query_commits();
     if (ermia::config::pcommit) {
       latency_numer_us += workers[i]->get_log()->get_latency();
+      latency_hist_us += workers[i]->get_log()->get_latency_hist();
     } else {
       latency_numer_us += workers[i]->get_latency_numer_us();
       latency_hist_us += workers[i]->latency_hist_us;
@@ -564,10 +570,10 @@ void bench_runner::start_measurement() {
 
   // output for plotting script
   std::cout << "---------------------------------------\n";
-  std::cout << n_txns << " total_txns, "
+  std::cout
        << agg_throughput << " txns/s, "
-       << avg_latency_ms << " latency.avg(ms), "
-       << p99_latency_ms << " latency.p99(ms), ";
+       << p99_latency_ms << " latency.p99(ms), "
+       << elapsed_sec << " total_time(sec), ";
   if (ermia::config::measure_llc_miss) {
     std::cout << llc_miss_ld << " llc-load-misses, "
           << llc_miss_st << " llc-store-misses, "

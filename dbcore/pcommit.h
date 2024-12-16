@@ -2,6 +2,7 @@
 
 #include "sm-config.h"
 #include "sm-thread.h"
+#include "histogram.h"
 
 namespace ermia {
 
@@ -20,6 +21,7 @@ struct commit_queue {
   uint32_t start;
   uint32_t items;
   uint64_t total_latency_us;
+  histogram_counter latency_hist_us;
   uint32_t length;
   mcs_lock lock;
   commit_queue()
@@ -31,6 +33,10 @@ struct commit_queue {
   void push_back(uint64_t csn, uint64_t start_time, bool *flush, bool *insert);
   inline uint32_t size() { return items; }
   void extend();
+  inline void record_latency(uint64_t latency) {
+    total_latency_us += latency;
+    latency_hist_us.add(latency);
+  }
 };
 
 class tls_committer {
@@ -38,6 +44,7 @@ private:
   // Same as log id and thread id
   uint32_t id;
   commit_queue *_commit_queue CACHE_ALIGNED;
+  bool record_latency = false;
 
 public:
   tls_committer() {}
@@ -46,6 +53,8 @@ public:
   inline uint32_t get_queue_size() { return _commit_queue->size(); }
 
   inline uint64_t get_latency() { return _commit_queue->total_latency_us; }
+  inline histogram_counter &get_latency_hist() { return _commit_queue->latency_hist_us; }
+  inline void set_record_latency(bool record) { record_latency = record; }
 
   // Mark committer as ongoing: some log blocks have not been durable
   inline void set_dirty_flag() {

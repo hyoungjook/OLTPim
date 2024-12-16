@@ -119,6 +119,8 @@ DEFINE_string(
 DEFINE_bool(enable_chkpt, false, "Whether to enable checkpointing.");
 DEFINE_uint64(chkpt_interval, 10, "Checkpoint interval in seconds.");
 DEFINE_bool(null_log_device, false, "Whether to skip writing log records.");
+DEFINE_bool(null_log_during_init, false, "Whether to skip logging during init. "
+            "Can be combined with null-log-device flag.");
 DEFINE_bool(truncate_at_bench_start, false,
             "Whether truncate the log/chkpt file written before starting "
             "benchmark (save tmpfs space).");
@@ -244,6 +246,7 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
   ermia::config::backoff_aborted_transactions =
       FLAGS_backoff_aborted_transactions;
   ermia::config::null_log_device = FLAGS_null_log_device;
+  ermia::config::null_log_during_init = FLAGS_null_log_during_init;
   ermia::config::truncate_at_bench_start = FLAGS_truncate_at_bench_start;
 
   ermia::config::replay_threads = 0;
@@ -347,6 +350,8 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
   std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB"
             << std::endl;
   std::cerr << "  null-log-device   : " << ermia::config::null_log_device
+            << std::endl;
+  std::cerr << "  null-log-during-init: " << ermia::config::null_log_during_init
             << std::endl;
   std::cerr << "  num-threads       : " << ermia::config::threads << std::endl;
   std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes

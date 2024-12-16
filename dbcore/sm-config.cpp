@@ -45,6 +45,7 @@ uint64_t log_buffer_mb = 8;
 uint64_t log_segment_mb = 16384;
 std::string log_dir("");
 bool null_log_device = false;
+bool null_log_during_init = false;
 bool truncate_at_bench_start = false;
 bool htt_is_on = true;
 bool physical_workers_only = true;

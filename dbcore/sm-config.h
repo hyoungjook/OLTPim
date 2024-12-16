@@ -61,6 +61,7 @@ extern bool retry_aborted_transactions;
 extern int backoff_aborted_transactions;
 extern int enable_gc;
 extern bool null_log_device;
+extern bool null_log_during_init;
 extern bool truncate_at_bench_start;
 extern bool pcommit;
 extern uint32_t pcommit_timeout_ms;

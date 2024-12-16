@@ -31,6 +31,12 @@ std::condition_variable pcommit_daemon_cond;
 std::mutex pcommit_daemon_lock;
 std::atomic<bool>pcommit_daemon_has_work(false);
 
+// whether to nullify flushing the log.
+// If config::null_log_device, it's always true.
+// If (!config::null_log_device) && config::null_log_during_init,
+//    it's true during init and false during measurement.
+bool null_log_device;
+
 void flush_all() {
   // Flush rest blocks
   for (auto &tlog : tlogs) {
@@ -78,6 +84,12 @@ void uninitialize() {
   }
 }
 
+void set_record_latency(bool record) {
+  for (auto &tlog : tlogs) {
+    tlog->get_committer()->set_record_latency(record);
+  }
+}
+
 void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
                          uint64_t logbuf_mb, uint64_t max_segment_mb) {
   std::lock_guard<std::mutex> lock(tls_log_lock);
@@ -119,6 +131,7 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
 
   // Initialize committer
   tcommitter.initialize(log_id);
+  dlog::null_log_device = (config::null_log_device || config::null_log_during_init);
 }
 
 void tls_log::uninitialize() {
@@ -228,7 +241,7 @@ bool tls_log::peek_only(void *user_data, uint32_t read_size) {
 }
 
 void tls_log::issue_flush(const char *buf, uint64_t size) {
-  if (config::null_log_device) {
+  if (dlog::null_log_device) {
     durable_lsn += size;
     return;
   }
@@ -256,7 +269,7 @@ void tls_log::issue_flush(const char *buf, uint64_t size) {
 }
 
 void tls_log::poll_flush() {
-  if(config::null_log_device) {
+  if(dlog::null_log_device) {
     return;
   }
 

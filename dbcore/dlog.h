@@ -38,6 +38,8 @@ void wakeup_commit_daemon();
 void initialize();
 void uninitialize();
 
+void set_record_latency(bool record);
+
 extern std::thread *pcommit_thread;
 
 // A segment of the log, i.e., a file
@@ -154,6 +156,7 @@ public:
   inline pcommit::tls_committer *get_committer() { return &tcommitter; }
 
   inline uint64_t get_latency() { return tcommitter.get_latency(); }
+  inline histogram_counter &get_latency_hist() { return tcommitter.get_latency_hist(); }
 
   // Allocate a log block in-place on the log buffer
   log_block *allocate_log_block(uint32_t payload_size,
@@ -187,6 +190,7 @@ public:
 };
 
 extern std::vector<tls_log *>tlogs;
+extern bool null_log_device;
 
 }  // namespace dlog
 
