@@ -864,7 +864,9 @@ coldq:
 
 ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_new_order(ermia::transaction *txn, uint32_t idx) {
   uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
+  if (FLAGS_tpcc_numa_local) {
+    _home_warehouse_id = me->node;
+  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
     _home_warehouse_id = home_warehouse_id + idx;
   } else {
     _home_warehouse_id = home_warehouse_id;
@@ -1004,7 +1006,7 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_new_order(ermia::transaction *tx
     const item::key k_i(ol_i_id);
     item::value v_i_temp;
 
-    rc = co_await tbl_item(1)->task_GetRecord(txn, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
+    rc = co_await tbl_item(warehouse_id)->task_GetRecord(txn, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
     TryVerifyRelaxedCoro(rc);
 
     const item::value *v_i = Decode(valptr, v_i_temp);
@@ -1060,7 +1062,9 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_new_order(ermia::transaction *tx
 
 ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_payment(ermia::transaction *txn, uint32_t idx) {
   uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
+  if (FLAGS_tpcc_numa_local) {
+    _home_warehouse_id = me->node;
+  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
     _home_warehouse_id = home_warehouse_id + idx;
   } else {
     _home_warehouse_id = home_warehouse_id;
@@ -1237,7 +1241,9 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_delivery(ermia::transaction *txn
   rc_t rc = rc_t{RC_INVALID};
 
   uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
+  if (FLAGS_tpcc_numa_local) {
+    _home_warehouse_id = me->node;
+  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
     _home_warehouse_id = home_warehouse_id + idx;
   } else {
     _home_warehouse_id = home_warehouse_id;
@@ -1378,7 +1384,9 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_order_status(ermia::transaction 
   rc_t rc = rc_t{RC_INVALID};
 
   uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
+  if (FLAGS_tpcc_numa_local) {
+    _home_warehouse_id = me->node;
+  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
     _home_warehouse_id = home_warehouse_id + idx;
   } else {
     _home_warehouse_id = home_warehouse_id;
@@ -1518,7 +1526,9 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_stock_level(ermia::transaction *
   rc_t rc = rc_t{RC_INVALID};
 
   uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
+  if (FLAGS_tpcc_numa_local) {
+    _home_warehouse_id = me->node;
+  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
     _home_warehouse_id = home_warehouse_id + idx;
   } else {
     _home_warehouse_id = home_warehouse_id;
@@ -1621,7 +1631,9 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_credit_check(ermia::transaction 
   rc_t rc = rc_t{RC_INVALID};
 
   uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
+  if (FLAGS_tpcc_numa_local) {
+    _home_warehouse_id = me->node;
+  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
     _home_warehouse_id = home_warehouse_id + idx;
   } else {
     _home_warehouse_id = home_warehouse_id;

@@ -58,6 +58,8 @@ class tpcc_oltpim_worker : public bench_worker, public tpcc_worker_mixin {
         home_warehouse_id(home_warehouse_id) {
   ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
   memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
+  // This cannot be applied if TPC-C accesses some remote warehouses
+  //oltpim::engine::g_engine.optimize_for_numa_local_key();
 }
 
   // XXX(stephentu): tune this
@@ -903,7 +905,9 @@ coldq:
 
 ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *txn, uint32_t idx) {
   uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
+  if (FLAGS_tpcc_numa_local) {
+    _home_warehouse_id = me->node;
+  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
     _home_warehouse_id = home_warehouse_id + idx;
   } else {
     _home_warehouse_id = home_warehouse_id;
@@ -1109,7 +1113,9 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
 
 ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn, uint32_t idx) {
   uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
+  if (FLAGS_tpcc_numa_local) {
+    _home_warehouse_id = me->node;
+  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
     _home_warehouse_id = home_warehouse_id + idx;
   } else {
     _home_warehouse_id = home_warehouse_id;
@@ -1284,7 +1290,9 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
   rc_t rc = rc_t{RC_INVALID};
 
   uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
+  if (FLAGS_tpcc_numa_local) {
+    _home_warehouse_id = me->node;
+  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
     _home_warehouse_id = home_warehouse_id + idx;
   } else {
     _home_warehouse_id = home_warehouse_id;
@@ -1433,7 +1441,9 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_order_status(ermia::transaction 
   rc_t rc = rc_t{RC_INVALID};
 
   uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
+  if (FLAGS_tpcc_numa_local) {
+    _home_warehouse_id = me->node;
+  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
     _home_warehouse_id = home_warehouse_id + idx;
   } else {
     _home_warehouse_id = home_warehouse_id;
@@ -1558,7 +1568,9 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_stock_level(ermia::transaction *
   rc_t rc = rc_t{RC_INVALID};
 
   uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
+  if (FLAGS_tpcc_numa_local) {
+    _home_warehouse_id = me->node;
+  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
     _home_warehouse_id = home_warehouse_id + idx;
   } else {
     _home_warehouse_id = home_warehouse_id;

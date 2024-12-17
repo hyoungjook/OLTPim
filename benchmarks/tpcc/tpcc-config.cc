@@ -32,6 +32,7 @@ DEFINE_uint32(tpcc_cold_customer_pct, 0, "The percentage of cold customer record
 DEFINE_uint32(tpcc_cold_item_pct, 0, "The percentage of cold item records when ramping up the database");
 
 DEFINE_bool(tpcc_coro_local_wh, true, "Whether to use coro-local warehouse");
+DEFINE_bool(tpcc_numa_local, false, "Whether to use numa-local tables and txns");
 
 int g_wh_temperature = 0;
 uint g_microbench_rows = 10;  // this many rows

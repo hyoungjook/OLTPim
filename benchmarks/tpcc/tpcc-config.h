@@ -37,6 +37,7 @@ DECLARE_uint32(tpcc_cold_customer_pct);
 DECLARE_uint32(tpcc_cold_item_pct);
 
 DECLARE_bool(tpcc_coro_local_wh);
+DECLARE_bool(tpcc_numa_local);
 
 extern int g_wh_temperature;
 extern uint g_microbench_rows;  // this many rows
@@ -345,7 +346,13 @@ class tpcc_worker_mixin : private _dummy {
   static std::vector<uint> cold_whs;
 
   ALWAYS_INLINE unsigned pick_wh(util::fast_random &r, uint home_wh) {
-    if (g_wh_temperature) {  // do it 80/20 way
+    if (FLAGS_tpcc_numa_local) {
+      // home_wh is numa_id
+      ASSERT(0 <= home_wh && home_wh < ermia::config::numa_nodes);
+      uint w = r.next() % (NumWarehouses() / ermia::config::numa_nodes);
+      return 1 + (w * ermia::config::numa_nodes) + home_wh;
+    }
+    else if (g_wh_temperature) {  // do it 80/20 way
       uint w = 0;
       if (r.next_uniform() >= 0.2)  // 80% access
         w = hot_whs[r.next() % hot_whs.size()];
@@ -488,15 +495,19 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_warehouse_loader(unsigned long seed, ermia::Engine *db,
                         const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                        const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
-      : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
+                        const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
+                        int loader_id = 0)
+      : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions), loader_id(loader_id) {}
 
  protected:
+  int loader_id;
   virtual void load() {
+    if (FLAGS_tpcc_numa_local) ALWAYS_ASSERT(loader_id == me->node);
     std::string obj_buf;
     uint64_t warehouse_total_sz = 0, n_warehouses = 0;
     std::vector<warehouse::value> warehouses;
     for (uint i = 1; i <= NumWarehouses(); i++) {
+      if (FLAGS_tpcc_numa_local && ((i-1)%ermia::config::numa_nodes != loader_id)) continue;
       arena->reset();
       ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
       const warehouse::key k(i);
@@ -539,6 +550,7 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       TryVerifyStrict(COMMIT_SYNC(ENGINE_COMMIT(db, txn)));
     }
     for (uint i = 1; i <= NumWarehouses(); i++) {
+      if (FLAGS_tpcc_numa_local && ((i-1)%ermia::config::numa_nodes != loader_id)) continue;
       arena->reset();
       ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
       const warehouse::key k(i);
@@ -555,7 +567,11 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       TryVerifyStrict(rc);
 
       const warehouse::value *v = Decode(warehouse_v, warehouse_temp);
-      ALWAYS_ASSERT(warehouses[i - 1] == *v);
+      if (FLAGS_tpcc_numa_local) {
+        ALWAYS_ASSERT(warehouses[(i-1)/ermia::config::numa_nodes] == *v);
+      } else {
+        ALWAYS_ASSERT(warehouses[i - 1] == *v);
+      }
 
 #ifndef NDEBUG
       checker::SanityCheckWarehouse(&k, v);
@@ -564,9 +580,11 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
     }
 
     // pre-build supp-stock mapping table to boost tpc-ch queries
-    for (uint w = 1; w <= NumWarehouses(); w++) {
-      for (uint i = 1; i <= NumItems(); i++) {
-        supp_stock_map[w * i % 10000].push_back(std::make_pair(w, i));
+    if (loader_id == 0) {
+      for (uint w = 1; w <= NumWarehouses(); w++) {
+        for (uint i = 1; i <= NumItems(); i++) {
+          supp_stock_map[w * i % 10000].push_back(std::make_pair(w, i));
+        }
       }
     }
     LOG(INFO) << "Finished loading warehouse";
@@ -579,11 +597,14 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_item_loader(unsigned long seed, ermia::Engine *db,
                    const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                   const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
-      : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
+                   const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
+                   int loader_id = 0)
+      : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions), loader_id(loader_id) {}
 
  protected:
+  int loader_id;
   virtual void load() {
+    if (FLAGS_tpcc_numa_local) ALWAYS_ASSERT(loader_id == me->node);
     std::string obj_buf;
     uint64_t total_sz = 0;
     constexpr uint batchsize = 32;
@@ -620,28 +641,28 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
         total_sz += sz;
 #if defined(OLTPIM)
         const uint64_t pk = tpcc_key64::item(k);
-        tbl_item(1)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &reqs[j]);
+        tbl_item(1+loader_id)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &reqs[j]);
       }
       for (uint j = 0; j < num; ++j) {
-        TryVerifyStrict(sync_wait_oltpim_coro(tbl_item(1)->pim_InsertRecordEnd(txn, &reqs[j])));
+        TryVerifyStrict(sync_wait_oltpim_coro(tbl_item(1+loader_id)->pim_InsertRecordEnd(txn, &reqs[j])));
 #else
         if ((i_begin + j) * 100 <= NumItems() * (100 - FLAGS_tpcc_cold_item_pct)) {
 #if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
-          TryVerifyStrict(sync_wait_coro(tbl_item(1)->InsertRecord(
+          TryVerifyStrict(sync_wait_coro(tbl_item(1+loader_id)->InsertRecord(
               txn, Encode(str(Size(k)), k),
               Encode(str(sz), v))));  // this table is shared, so any partition is OK
 #else
-          TryVerifyStrict(tbl_item(1)->InsertRecord(
+          TryVerifyStrict(tbl_item(1+loader_id)->InsertRecord(
               txn, Encode(str(Size(k)), k),
               Encode(str(sz), v)));  // this table is shared, so any partition is OK
 #endif
         } else {
 #if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
-          TryVerifyStrict(sync_wait_coro(tbl_item(1)->InsertColdRecord(
+          TryVerifyStrict(sync_wait_coro(tbl_item(1+loader_id)->InsertColdRecord(
               txn, Encode(str(Size(k)), k),
               Encode(str(sz), v))));  // this table is shared, so any partition is OK
 #else
-          TryVerifyStrict(tbl_item(1)->InsertColdRecord(
+          TryVerifyStrict(tbl_item(1+loader_id)->InsertColdRecord(
               txn, Encode(str(Size(k)), k),
               Encode(str(sz), v)));  // this table is shared, so any partition is OK
 #endif
@@ -674,6 +695,7 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
 
  protected:
   virtual void load() {
+    if (FLAGS_tpcc_numa_local) ALWAYS_ASSERT((warehouse_id-1) % ermia::config::numa_nodes == me->node);
     std::string obj_buf, obj_buf1;
 
     uint64_t stock_total_sz = 0, n_stocks = 0;
@@ -773,17 +795,21 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_district_loader(unsigned long seed, ermia::Engine *db,
                        const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                       const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
-      : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
+                       const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
+                       int loader_id = 0)
+      : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions), loader_id(loader_id) {}
 
  protected:
+  int loader_id;
   virtual void load() {
+        if (FLAGS_tpcc_numa_local) ALWAYS_ASSERT(loader_id == me->node);
     std::string obj_buf;
 
     const ssize_t bsize = 10;
     uint64_t district_total_sz = 0, n_districts = 0;
     uint cnt = 0;
     for (uint w = 1; w <= NumWarehouses(); w++) {
+      if (FLAGS_tpcc_numa_local && ((w-1)%ermia::config::numa_nodes != loader_id)) continue;
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++, cnt++) {
         arena->reset();
         ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
@@ -844,6 +870,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 
  protected:
   virtual void load() {
+    if (FLAGS_tpcc_numa_local) ALWAYS_ASSERT((warehouse_id-1) % ermia::config::numa_nodes == me->node);
     std::string obj_buf;
 
     const uint w_start =
@@ -1030,6 +1057,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
   size_t NumOrderLinesPerCustomer() { return RandomNumber(r, 5, 15); }
 
   virtual void load() {
+    if (FLAGS_tpcc_numa_local) ALWAYS_ASSERT((warehouse_id-1) % ermia::config::numa_nodes == me->node);
     std::string obj_buf;
 
     uint64_t order_line_total_sz = 0, n_order_lines = 0;
@@ -1442,6 +1470,7 @@ class tpcc_bench_runner : public bench_runner {
     const std::string s_name(name);
     std::vector<ermia::OrderedIndex *> ret(NumWarehouses());
     if (FLAGS_tpcc_enable_separate_tree_per_partition && !is_read_only) {
+      ALWAYS_ASSERT(!FLAGS_tpcc_numa_local);
       if (NumWarehouses() <= ermia::config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++) {
           ret[i] = ermia::TableDescriptor::GetIndex(s_name + "_" + std::to_string(i));
@@ -1464,10 +1493,18 @@ class tpcc_bench_runner : public bench_runner {
         }
       }
     } else {
-      ermia::OrderedIndex *idx = ermia::TableDescriptor::GetIndex(s_name);
-      ALWAYS_ASSERT(idx);
-      for (size_t i = 0; i < NumWarehouses(); i++) {
-        ret[i] = idx;
+      if (!FLAGS_tpcc_numa_local) {
+        ermia::OrderedIndex *idx = ermia::TableDescriptor::GetIndex(s_name);
+        ALWAYS_ASSERT(idx);
+        for (size_t i = 0; i < NumWarehouses(); i++) {
+          ret[i] = idx;
+        }
+      }
+      else {
+        for (size_t i = 0; i < NumWarehouses(); i++) {
+          int numa_id = (int)(i % ermia::config::numa_nodes);
+          ret[i] = ermia::TableDescriptor::GetIndex(s_name + "_" + std::to_string(numa_id));
+        }
       }
     }
     return ret;
@@ -1482,6 +1519,7 @@ class tpcc_bench_runner : public bench_runner {
     // A labmda function to be executed by an sm-thread
     auto register_index = [=](char *) {
       if (FLAGS_tpcc_enable_separate_tree_per_partition && !is_read_only) {
+        ALWAYS_ASSERT(!FLAGS_tpcc_numa_local); // not implemented
         if (NumWarehouses() <= ermia::config::worker_threads) {
           for (size_t i = 0; i < NumWarehouses(); i++) {
             if (!is_primary) {
@@ -1511,11 +1549,26 @@ class tpcc_bench_runner : public bench_runner {
           }
         }
       } else {
-        if (!is_primary) {
-          db->CreateMasstreeSecondaryIndex(table_name, index_name);
-        } else {
-          db->CreateTable(table_name);
-          db->CreateMasstreePrimaryIndex(table_name, std::string(index_name));
+        if (!FLAGS_tpcc_numa_local) {
+          if (!is_primary) {
+            db->CreateMasstreeSecondaryIndex(table_name, index_name);
+          } else {
+            db->CreateTable(table_name);
+            db->CreateMasstreePrimaryIndex(table_name, std::string(index_name));
+          }
+        }
+        else {
+          ALWAYS_ASSERT(ermia::config::numa_spread);
+          for (int i = 0; i < ermia::config::numa_nodes; ++i) {
+            std::string tname = std::string(table_name) + "_" + std::to_string(i);
+            std::string iname = std::string(index_name) + "_" + std::to_string(i);
+            if (!is_primary) {
+              db->CreateMasstreeSecondaryIndex(tname.c_str(), iname);
+            } else {
+              db->CreateTable(tname.c_str());
+              db->CreateMasstreePrimaryIndex(tname.c_str(), iname);
+            }
+          }
         }
       }
     };
@@ -1546,22 +1599,26 @@ class tpcc_bench_runner : public bench_runner {
     RegisterIndex(db, "supplier",   "supplier",         true);
     RegisterIndex(db, "warehouse",  "warehouse",        true);
 #if defined(OLTPIM)
+#define tpcc_tables_helper(f) \
+f(customer); f(customer_name_idx); f(district); f(history); f(item); f(new_order); \
+f(oorder); f(oorder_c_id_idx); f(order_line); f(stock); f(stock_data); f(warehouse);
+    if (!FLAGS_tpcc_numa_local) {
 #define partition_interval_set(table) \
   ermia::pim::set_index_partition_interval(#table, \
     tpcc_key64::table##_bits.pim_bits, false, 0)
-    partition_interval_set(customer);
-    partition_interval_set(customer_name_idx);
-    partition_interval_set(district);
-    partition_interval_set(history);
-    partition_interval_set(item);
-    partition_interval_set(new_order);
-    partition_interval_set(oorder);
-    partition_interval_set(oorder_c_id_idx);
-    partition_interval_set(order_line);
-    partition_interval_set(stock);
-    partition_interval_set(stock_data);
-    partition_interval_set(warehouse);
+      tpcc_tables_helper(partition_interval_set)
 #undef partition_interval_set
+    }
+    else {
+      for (int numa_id = 0; numa_id < ermia::config::numa_nodes; ++numa_id) {
+#define partition_interval_set(table) \
+  ermia::pim::set_index_partition_interval((std::string(#table) + "_" + std::to_string(numa_id)).c_str(), \
+    tpcc_key64::table##_bits.pim_bits, true, numa_id)
+        tpcc_tables_helper(partition_interval_set)
+#undef partition_interval_set
+      }
+    }
+#undef tpcc_tables_helper
     ermia::pim::finalize_index_setup();
 #endif
   }
@@ -1593,42 +1650,58 @@ class tpcc_bench_runner : public bench_runner {
  protected:
   virtual std::vector<bench_loader *> make_loaders() {
     std::vector<bench_loader *> ret;
-    ret.push_back(new tpcc_warehouse_loader(9324, db, open_tables, partitions));
-#if !defined(OLTPIM)
-    ret.push_back(new tpcc_nation_loader(1512, db, open_tables, partitions));
-    ret.push_back(new tpcc_region_loader(789121, db, open_tables, partitions));
-    ret.push_back(
-        new tpcc_supplier_loader(51271928, db, open_tables, partitions));
-#endif
-    ret.push_back(new tpcc_item_loader(235443, db, open_tables, partitions));
-    if (ermia::config::parallel_loading) {
-      util::fast_random r(89785943);
-      for (uint i = 1; i <= NumWarehouses(); i++)
+    if (!FLAGS_tpcc_numa_local) {
+      ret.push_back(new tpcc_warehouse_loader(9324, db, open_tables, partitions));
+      //ret.push_back(new tpcc_nation_loader(1512, db, open_tables, partitions));
+      //ret.push_back(new tpcc_region_loader(789121, db, open_tables, partitions));
+      //ret.push_back(
+      //    new tpcc_supplier_loader(51271928, db, open_tables, partitions));
+      ret.push_back(new tpcc_item_loader(235443, db, open_tables, partitions));
+      if (ermia::config::parallel_loading) {
+        util::fast_random r(89785943);
+        for (uint i = 1; i <= NumWarehouses(); i++)
+          ret.push_back(
+              new tpcc_stock_loader(r.next(), db, open_tables, partitions, i));
+      } else {
         ret.push_back(
-            new tpcc_stock_loader(r.next(), db, open_tables, partitions, i));
-    } else {
+            new tpcc_stock_loader(89785943, db, open_tables, partitions, -1));
+      }
       ret.push_back(
-          new tpcc_stock_loader(89785943, db, open_tables, partitions, -1));
+          new tpcc_district_loader(129856349, db, open_tables, partitions));
+      if (ermia::config::parallel_loading) {
+        util::fast_random r(923587856425);
+        for (uint i = 1; i <= NumWarehouses(); i++)
+          ret.push_back(
+              new tpcc_customer_loader(r.next(), db, open_tables, partitions, i));
+      } else {
+        ret.push_back(new tpcc_customer_loader(923587856425, db, open_tables,
+                                               partitions, -1));
+      }
+      if (ermia::config::parallel_loading) {
+        util::fast_random r(2343352);
+        for (uint i = 1; i <= NumWarehouses(); i++)
+          ret.push_back(
+              new tpcc_order_loader(r.next(), db, open_tables, partitions, i));
+      } else {
+        ret.push_back(
+            new tpcc_order_loader(2343352, db, open_tables, partitions, -1));
+      }
     }
-    ret.push_back(
-        new tpcc_district_loader(129856349, db, open_tables, partitions));
-    if (ermia::config::parallel_loading) {
+    else {
+      ALWAYS_ASSERT(ermia::config::parallel_loading);
       util::fast_random r(923587856425);
-      for (uint i = 1; i <= NumWarehouses(); i++)
-        ret.push_back(
-            new tpcc_customer_loader(r.next(), db, open_tables, partitions, i));
-    } else {
-      ret.push_back(new tpcc_customer_loader(923587856425, db, open_tables,
-                                             partitions, -1));
-    }
-    if (ermia::config::parallel_loading) {
-      util::fast_random r(2343352);
-      for (uint i = 1; i <= NumWarehouses(); i++)
-        ret.push_back(
-            new tpcc_order_loader(r.next(), db, open_tables, partitions, i));
-    } else {
-      ret.push_back(
-          new tpcc_order_loader(2343352, db, open_tables, partitions, -1));
+      for (int i = 0; i < ermia::config::numa_nodes; ++i)
+        ret.push_back(new tpcc_warehouse_loader(r.next(), db, open_tables, partitions, i));
+      for (int i = 0; i < ermia::config::numa_nodes; ++i)
+        ret.push_back(new tpcc_item_loader(r.next(), db, open_tables, partitions, i));
+      for (int i = 1; i <= NumWarehouses(); ++i)
+        ret.push_back(new tpcc_stock_loader(r.next(), db, open_tables, partitions, i));
+      for (int i = 0; i < ermia::config::numa_nodes; ++i)
+        ret.push_back(new tpcc_district_loader(r.next(), db, open_tables, partitions, i));
+      for (int i = 1; i <= NumWarehouses(); ++i)
+        ret.push_back(new tpcc_customer_loader(r.next(), db, open_tables, partitions, i));
+      for (int i = 1; i <= NumWarehouses(); ++i)
+        ret.push_back(new tpcc_order_loader(r.next(), db, open_tables, partitions, i));
     }
     return ret;
   }
@@ -1636,6 +1709,7 @@ class tpcc_bench_runner : public bench_runner {
   virtual std::vector<bench_worker *> make_workers() {
     util::fast_random r(23984543);
     std::vector<bench_worker *> ret;
+    ALWAYS_ASSERT(!(FLAGS_tpcc_coro_local_wh && FLAGS_tpcc_numa_local));
     if (FLAGS_tpcc_coro_local_wh && ermia::config::read_txn_type != "tpcc-sequential") {
       ASSERT(NumWarehouses() >= ermia::config::worker_threads * (ermia::config::coro_batch_size
                                                                   + ermia::config::coro_cold_queue_size));
