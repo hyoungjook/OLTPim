@@ -100,7 +100,7 @@ static inline uint64_t item(const item::key &k) {
   return (uint64_t)k.i_id;
 }
 
-static constexpr uint64_t new_order_bits = 24;
+static constexpr uint64_t new_order_bits = 20;
 static inline uint64_t new_order(const new_order::key &k) {
   // w_id, 4b d_id, 20b o_id
   return (((uint64_t)k.no_w_id) << 24) | (((uint64_t)k.no_d_id) << 20) | (((uint64_t)k.no_o_id));

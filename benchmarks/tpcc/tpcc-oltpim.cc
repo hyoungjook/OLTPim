@@ -1346,7 +1346,6 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
     oorder::value v_oo_temp;
     ermia::varstr valptr;
     rc = co_await tbl_oorder(warehouse_id)->pim_GetRecord(txn, pk_oo, valptr);
-    if (rc._val != RC_TRUE) rc._val = RC_ABORT_USER;
     TryCatchOltpim(rc);
 
     valptr.prefetch();

@@ -1294,7 +1294,6 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_delivery(ermia::transaction *txn
     oorder::value v_oo_temp;
     ermia::varstr valptr;
     rc = co_await tbl_oorder(warehouse_id)->task_GetRecord(txn, Encode(str(arenas[idx], Size(k_oo)), k_oo), valptr);
-    if (rc._val != RC_TRUE) rc._val = RC_ABORT_USER;
     TryCatchCoro(rc);
 
     valptr.prefetch();
