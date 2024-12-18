@@ -5,20 +5,15 @@
 
 namespace tpcc_key64 {
 // Embeds key of all tables into uint64 number
+// *_bits: required scan length for the index
 
-// pim_bits: bits of required scan length interval
-// numa_bits: bits until w_id
-struct bits_info {
-  uint64_t pim_bits, numa_bits;
-};
-
-static constexpr bits_info customer_bits = {0, 24};
+static constexpr uint64_t customer_bits = 0;
 static inline uint64_t customer(const customer::key &k) {
   // w_id, 4b d_id, 20b c_id
   return (((uint64_t)k.c_w_id) << 24) | (((uint64_t)k.c_d_id) << 20) | (((uint64_t)k.c_id));
 }
 
-static constexpr bits_info customer_name_idx_bits = {30, 44};
+static constexpr uint64_t customer_name_idx_bits = 30;
 static uint64_t customer_name_idx(const customer_name_idx::key &k,
     bool min_c_first = false, bool max_c_first = false) {
   // w_id, 4b d_id, 10b encoded c_last, 6b x (first 5 alnums of c_first)
@@ -84,13 +79,13 @@ static uint64_t customer_name_idx(const customer_name_idx::key &k,
     (((uint64_t)encoded_c_last) << 30) | (((uint64_t)encoded_c_first));
 }
 
-static constexpr bits_info district_bits = {0, 4};
+static constexpr uint64_t district_bits = 0;
 static inline uint64_t district(const district::key &k) {
   // w_id, 4b d_id
   return (((uint64_t)k.d_w_id) << 4) | (((uint64_t)k.d_id));
 }
 
-static constexpr bits_info history_bits = {0, 54};
+static constexpr uint64_t history_bits = 0;
 static inline uint64_t history(const history::key &k) {
   // overlap and xor, except w_id
   return (((uint64_t)k.h_w_id) << 54) | (
@@ -100,24 +95,24 @@ static inline uint64_t history(const history::key &k) {
   );
 }
 
-static constexpr bits_info item_bits = {0, 10};
+static constexpr uint64_t item_bits = 0;
 static inline uint64_t item(const item::key &k) {
   return (uint64_t)k.i_id;
 }
 
-static constexpr bits_info new_order_bits = {24, 24};
+static constexpr uint64_t new_order_bits = 24;
 static inline uint64_t new_order(const new_order::key &k) {
   // w_id, 4b d_id, 20b o_id
   return (((uint64_t)k.no_w_id) << 24) | (((uint64_t)k.no_d_id) << 20) | (((uint64_t)k.no_o_id));
 }
 
-static constexpr bits_info oorder_bits = {0, 24};
+static constexpr uint64_t oorder_bits = 0;
 static inline uint64_t oorder(const oorder::key &k) {
   // w_id, 4b d_id, 20b o_id
   return (((uint64_t)k.o_w_id) << 24) | (((uint64_t)k.o_d_id) << 20) | (((uint64_t)k.o_id));
 }
 
-static constexpr bits_info oorder_c_id_idx_bits = {20, 44};
+static constexpr uint64_t oorder_c_id_idx_bits = 20;
 static inline uint64_t oorder_c_id_idx(const oorder_c_id_idx::key &k) {
   // w_id, 4b d_id, 20b c_id, 20b o_id
   // o_id is reversed!
@@ -125,26 +120,26 @@ static inline uint64_t oorder_c_id_idx(const oorder_c_id_idx::key &k) {
     (((uint64_t)k.o_c_id) << 20) | ((0xFFFFFULL - (uint64_t)k.o_o_id));
 }
 
-static constexpr bits_info order_line_bits = {4, 28};
+static constexpr uint64_t order_line_bits = 4;
 static inline uint64_t order_line(const order_line::key &k) {
   // w_id, 4b d_id, 20b o_id, 4b ol_number
   return (((uint64_t)k.ol_w_id) << 28) | (((uint64_t)k.ol_d_id) << 24) |
     (((uint64_t)k.ol_o_id) << 4) | (((uint64_t)k.ol_number));
 }
 
-static constexpr bits_info stock_bits = {0, 18};
+static constexpr uint64_t stock_bits = 0;
 static inline uint64_t stock(const stock::key &k) {
   // w_id, 18b i_id
   return (((uint64_t)k.s_w_id) << 18) | (((uint64_t)k.s_i_id));
 }
 
-static constexpr bits_info stock_data_bits = {0, 18};
+static constexpr uint64_t stock_data_bits = 0;
 static inline uint64_t stock_data(const stock_data::key &k) {
   // w_id, 18b i_id
   return (((uint64_t)k.s_w_id) << 18) | (((uint64_t)k.s_i_id));
 }
 
-static constexpr bits_info warehouse_bits = {0, 0};
+static constexpr uint64_t warehouse_bits = 0;
 static inline uint64_t warehouse(const warehouse::key &k) {
   return (uint64_t)k.w_id;
 }

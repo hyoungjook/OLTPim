@@ -1599,7 +1599,7 @@ f(oorder); f(oorder_c_id_idx); f(order_line); f(stock); f(stock_data); f(warehou
     if (!FLAGS_tpcc_numa_local) {
 #define partition_interval_set(table) \
   ermia::pim::set_index_partition_interval(#table, \
-    tpcc_key64::table##_bits.pim_bits, false, 0)
+    tpcc_key64::table##_bits, false, 0)
       tpcc_tables_helper(partition_interval_set)
 #undef partition_interval_set
     }
@@ -1607,7 +1607,7 @@ f(oorder); f(oorder_c_id_idx); f(order_line); f(stock); f(stock_data); f(warehou
       for (int numa_id = 0; numa_id < ermia::config::numa_nodes; ++numa_id) {
 #define partition_interval_set(table) \
   ermia::pim::set_index_partition_interval((std::string(#table) + "_" + std::to_string(numa_id)).c_str(), \
-    tpcc_key64::table##_bits.pim_bits, true, numa_id)
+    tpcc_key64::table##_bits, true, numa_id)
         tpcc_tables_helper(partition_interval_set)
 #undef partition_interval_set
       }
