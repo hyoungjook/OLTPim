@@ -1004,7 +1004,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
 
   const new_order::key k_no(warehouse_id, districtID, my_next_o_id);
   const uint64_t pk_no = tpcc_key64::new_order(k_no);
-  const new_order::value v_no;
+  const new_order::value v_no(warehouse_id, districtID, my_next_o_id);
   const size_t new_order_sz = Size(v_no);
   rc = co_await tbl_new_order(warehouse_id)
            ->pim_InsertRecord(txn, pk_no,
@@ -1023,6 +1023,9 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
   const oorder::key k_oo(warehouse_id, districtID, k_no.no_o_id);
   const uint64_t pk_oo = tpcc_key64::oorder(k_oo);
   oorder::value v_oo;
+  v_oo.o_w_id = warehouse_id;
+  v_oo.o_d_id = districtID;
+  v_oo.o_id = k_no.no_o_id;
   v_oo.o_c_id = int32_t(customerID);
   v_oo.o_carrier_id = 0;  // seems to be ignored
   v_oo.o_ol_cnt = int8_t(numItems);
@@ -1089,6 +1092,10 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
                               ol_number);
     const uint64_t pk_ol = tpcc_key64::order_line(k_ol);
     order_line::value v_ol;
+    v_ol.ol_w_id = warehouse_id;
+    v_ol.ol_d_id = districtID;
+    v_ol.ol_o_id = k_no.no_o_id;
+    v_ol.ol_number = ol_number;
     v_ol.ol_i_id = int32_t(ol_i_id);
     v_ol.ol_delivery_d = 0;  // not delivered yet
     v_ol.ol_amount = float(ol_quantity) * v_i->i_price;
@@ -1339,6 +1346,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
     oorder::value v_oo_temp;
     ermia::varstr valptr;
     rc = co_await tbl_oorder(warehouse_id)->pim_GetRecord(txn, pk_oo, valptr);
+    if (rc._val != RC_TRUE) rc._val = RC_ABORT_USER;
     TryCatchOltpim(rc);
 
     valptr.prefetch();

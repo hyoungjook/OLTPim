@@ -302,6 +302,7 @@ ConcurrentMasstreeIndex::pim_InsertOIDEnd(transaction *t, void *req_) {
     uint16_t rc = (rets.status == STATUS_FAILED) ? RC_FALSE : RC_ABORT_SI_CONFLICT;
     co_return {rc};
   }
+  t->add_to_pim_write_set_secondary_idx(pim_id_of(req->args.key));
   co_return {RC_TRUE};
 }
 

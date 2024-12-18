@@ -19,7 +19,7 @@ void set_index_partition_interval(
   const char *index_name, uint64_t interval_bits, bool numa_local, uint32_t numa_id);
 
 struct log_record_t {
-  fat_ptr entry;
+  fat_ptr entry; // if entry == NULL_PTR && is_insert, it's secondary index record: only pim_id is valid.
   bool is_insert;
   uint8_t index_id;
   uint16_t pim_id;
@@ -30,6 +30,7 @@ struct log_record_t {
   log_record_t(fat_ptr entry, uint8_t index_id, uint16_t pim_id, uint32_t oid, uint64_t size, bool insert)
     : entry(entry), is_insert(insert), index_id(index_id), pim_id(pim_id), oid(oid), size(size) {}
   inline Object *get_object() {return (Object*)entry.offset();}
+  inline bool is_secondary_index_record() {return (entry._ptr == 0 && is_insert);}
 };
 
 struct write_set_t {

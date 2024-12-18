@@ -207,6 +207,9 @@ public:
     // prepended by log_insert/update etc.
     pim_write_set.emplace_back(entry, index_id, pim_id, oid, size + sizeof(dbtuple), insert);
   }
+  inline void add_to_pim_write_set_secondary_idx(uint32_t pim_id) {
+    pim_write_set.emplace_back(NULL_PTR, 0, pim_id, 0, 0, true);
+  }
 #endif
 
   inline TXN::xid_context *GetXIDContext() { return xc; }

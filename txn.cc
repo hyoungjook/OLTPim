@@ -216,9 +216,11 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
     args.xid = (xid._val) >> 16;
     oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
 #else
-    Object *obj = w.get_object();
-    obj->SetCSN(NULL_PTR);
-    oidmgr->UnlinkTuple(w.entry);
+    if (!w.is_secondary_index_record()) {
+      Object *obj = w.get_object();
+      obj->SetCSN(NULL_PTR);
+      oidmgr->UnlinkTuple(w.entry);
+    }
 #endif
   }
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
@@ -272,21 +274,25 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
       args.csn = xc->end;
       oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
 #else
-      fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
-      object->SetCSN(csn_ptr);
+      if (!w.is_secondary_index_record()) {
+        fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+        object->SetCSN(csn_ptr);
+      }
 #endif
 
-      // hack: pack index_id and pim_id to fid
-      const uint32_t fid = (w.index_id << 16) | (w.pim_id);
-      if (w.is_insert) {
-        auto ret_off = dlog::log_insert(lb, fid, w.oid, (char *)tuple, w.size);
-        ALWAYS_ASSERT(ret_off == off);
+      if (!w.is_secondary_index_record()) {
+        // hack: pack index_id and pim_id to fid
+        const uint32_t fid = (w.index_id << 16) | (w.pim_id);
+        if (w.is_insert) {
+          auto ret_off = dlog::log_insert(lb, fid, w.oid, (char *)tuple, w.size);
+          ALWAYS_ASSERT(ret_off == off);
+        }
+        else {
+          auto ret_off = dlog::log_update(lb, fid, w.oid, (char *)tuple, w.size);
+          ALWAYS_ASSERT(ret_off == off);
+        }
+        ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
       }
-      else {
-        auto ret_off = dlog::log_update(lb, fid, w.oid, (char *)tuple, w.size);
-        ALWAYS_ASSERT(ret_off == off);
-      }
-      ALWAYS_ASSERT(lb->payload_size <= lb->capacity);
     }
     ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)

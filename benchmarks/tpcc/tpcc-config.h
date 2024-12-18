@@ -810,6 +810,8 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
         const district::key k(w, d);
 
         district::value v;
+        v.d_w_id = w;
+        v.d_id = d;
         v.d_ytd = 30000;
         v.d_tax = (float)(RandomNumber(r, 0, 2000) / 10000.0);
         v.d_next_o_id = 3001;
