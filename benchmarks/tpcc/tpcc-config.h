@@ -346,13 +346,7 @@ class tpcc_worker_mixin : private _dummy {
   static std::vector<uint> cold_whs;
 
   ALWAYS_INLINE unsigned pick_wh(util::fast_random &r, uint home_wh) {
-    if (FLAGS_tpcc_numa_local) {
-      // home_wh is numa_id
-      ASSERT(0 <= home_wh && home_wh < ermia::config::numa_nodes);
-      uint w = r.next() % (NumWarehouses() / ermia::config::numa_nodes);
-      return 1 + (w * ermia::config::numa_nodes) + home_wh;
-    }
-    else if (g_wh_temperature) {  // do it 80/20 way
+    if (g_wh_temperature) {  // do it 80/20 way
       uint w = 0;
       if (r.next_uniform() >= 0.2)  // 80% access
         w = hot_whs[r.next() % hot_whs.size()];
@@ -1709,8 +1703,13 @@ f(oorder); f(oorder_c_id_idx); f(order_line); f(stock); f(stock_data); f(warehou
   virtual std::vector<bench_worker *> make_workers() {
     util::fast_random r(23984543);
     std::vector<bench_worker *> ret;
-    ALWAYS_ASSERT(!(FLAGS_tpcc_coro_local_wh && FLAGS_tpcc_numa_local));
-    if (FLAGS_tpcc_coro_local_wh && ermia::config::read_txn_type != "tpcc-sequential") {
+    if (FLAGS_tpcc_numa_local && FLAGS_tpcc_coro_local_wh) {
+      // i-th worker thread's j-th coroutine's home_warehouse_id is (i + j * worker_threads)
+      // Because (i % numa_nodes) == numa_id, in order to make all home_warehouse_id to be numa_local,
+      // (i + j * worker_threads) % numa_nodes == (i % numa_nodes) should be hold: below!
+      ALWAYS_ASSERT(ermia::config::worker_threads % ermia::config::numa_nodes == 0);
+    }
+    if (FLAGS_tpcc_coro_local_wh && ermia::config::read_txn_type != "tpcc-sequential" && !FLAGS_tpcc_numa_local) {
       ASSERT(NumWarehouses() >= ermia::config::worker_threads * (ermia::config::coro_batch_size
                                                                   + ermia::config::coro_cold_queue_size));
       for (size_t i = 0; i < ermia::config::worker_threads; i++) {

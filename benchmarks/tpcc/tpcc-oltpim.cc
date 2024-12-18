@@ -905,10 +905,8 @@ coldq:
 
 ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *txn, uint32_t idx) {
   uint _home_warehouse_id = 0;
-  if (FLAGS_tpcc_numa_local) {
-    _home_warehouse_id = me->node;
-  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx;
+  if (likely(FLAGS_tpcc_coro_local_wh)) {
+    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
   } else {
     _home_warehouse_id = home_warehouse_id;
   }
@@ -1113,10 +1111,8 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
 
 ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn, uint32_t idx) {
   uint _home_warehouse_id = 0;
-  if (FLAGS_tpcc_numa_local) {
-    _home_warehouse_id = me->node;
-  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx;
+  if (likely(FLAGS_tpcc_coro_local_wh)) {
+    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
   } else {
     _home_warehouse_id = home_warehouse_id;
   }
@@ -1290,10 +1286,8 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
   rc_t rc = rc_t{RC_INVALID};
 
   uint _home_warehouse_id = 0;
-  if (FLAGS_tpcc_numa_local) {
-    _home_warehouse_id = me->node;
-  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx;
+  if (likely(FLAGS_tpcc_coro_local_wh)) {
+    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
   } else {
     _home_warehouse_id = home_warehouse_id;
   }
@@ -1441,10 +1435,8 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_order_status(ermia::transaction 
   rc_t rc = rc_t{RC_INVALID};
 
   uint _home_warehouse_id = 0;
-  if (FLAGS_tpcc_numa_local) {
-    _home_warehouse_id = me->node;
-  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx;
+  if (likely(FLAGS_tpcc_coro_local_wh)) {
+    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
   } else {
     _home_warehouse_id = home_warehouse_id;
   }
@@ -1568,10 +1560,8 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_stock_level(ermia::transaction *
   rc_t rc = rc_t{RC_INVALID};
 
   uint _home_warehouse_id = 0;
-  if (FLAGS_tpcc_numa_local) {
-    _home_warehouse_id = me->node;
-  } else if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx;
+  if (likely(FLAGS_tpcc_coro_local_wh)) {
+    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
   } else {
     _home_warehouse_id = home_warehouse_id;
   }
@@ -1754,6 +1744,7 @@ void tpcc_oltpim_worker::MyWork(char *) {
   workload = get_workload();
   txn_counts.resize(workload.size());
   _coro_batch_size = ermia::config::coro_batch_size;
+  if (FLAGS_tpcc_numa_local) ALWAYS_ASSERT((home_warehouse_id-1) % ermia::config::numa_nodes == me->node);
 
   auto schedule_mode = ermia::config::coro_scheduler;
   LOG_IF(FATAL, ermia::config::io_threads > ermia::config::worker_threads) << "Not enough threads.";
