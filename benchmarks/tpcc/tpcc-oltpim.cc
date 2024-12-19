@@ -1750,7 +1750,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const uint64_t pk_no_0 = tpcc_key64::new_order(k_no_0);
     const new_order::key k_no_1(warehouse_id, d,
-                                0xFFFFFUL); // 20bit encoded
+                                0x3FFFFFFFUL); // 30bit encoded
     const uint64_t pk_no_1 = tpcc_key64::new_order(k_no_1);
     pim_static_limit_callback<1,true> new_order_c;
     {
@@ -1882,7 +1882,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery_multiget(ermia::transac
       const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
       const uint64_t pk_no_0 = tpcc_key64::new_order(k_no_0);
       const new_order::key k_no_1(warehouse_id, d,
-                                  0xFFFFFUL); // 20bit encoded
+                                  0x3FFFFFFFUL); // 30bit encoded
       const uint64_t pk_no_1 = tpcc_key64::new_order(k_no_1);
       pim_static_limit_callback<1,true> new_order_c;
       rc = co_await tbl_new_order(warehouse_id)
@@ -2093,7 +2093,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_order_status(ermia::transaction 
                                         0);
   const uint64_t pk_oo_idx_0 = tpcc_key64::oorder_c_id_idx(k_oo_idx_0);
   const oorder_c_id_idx::key k_oo_idx_1(warehouse_id, districtID, k_c.c_id,
-                                        0xFFFFFUL); // 20bit o_id
+                                        0x3FFFFFFFUL); // 30bit o_id
   const uint64_t pk_oo_idx_1 = tpcc_key64::oorder_c_id_idx(k_oo_idx_1);
   {
     // o_id stored in reverse order: search from pk_1 to pk_0

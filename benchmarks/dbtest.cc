@@ -16,7 +16,7 @@
 
 DEFINE_bool(threadpool, true,
             "Whether to use ERMIA thread pool (no oversubscription)");
-DEFINE_uint64(arena_size_mb, 8,
+DEFINE_uint64(arena_size_mb, 1,
               "Size of transaction arena (private workspace) in MB");
 DEFINE_bool(tls_alloc, true,
             "Whether to use the TLS allocator defined in sm-alloc.h");

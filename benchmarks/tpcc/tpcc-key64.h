@@ -9,8 +9,8 @@ namespace tpcc_key64 {
 
 static constexpr uint64_t customer_bits = 0;
 static inline uint64_t customer(const customer::key &k) {
-  // w_id, 4b d_id, 20b c_id
-  return (((uint64_t)k.c_w_id) << 24) | (((uint64_t)k.c_d_id) << 20) | (((uint64_t)k.c_id));
+  // w_id, 4b d_id, 12b c_id
+  return (((uint64_t)k.c_w_id) << 16) | (((uint64_t)k.c_d_id) << 12) | (((uint64_t)k.c_id));
 }
 
 static constexpr uint64_t customer_name_idx_bits = 30;
@@ -100,30 +100,30 @@ static inline uint64_t item(const item::key &k) {
   return (uint64_t)k.i_id;
 }
 
-static constexpr uint64_t new_order_bits = 20;
+static constexpr uint64_t new_order_bits = 30;
 static inline uint64_t new_order(const new_order::key &k) {
-  // w_id, 4b d_id, 20b o_id
-  return (((uint64_t)k.no_w_id) << 24) | (((uint64_t)k.no_d_id) << 20) | (((uint64_t)k.no_o_id));
+  // w_id, 4b d_id, 30b o_id
+  return (((uint64_t)k.no_w_id) << 34) | (((uint64_t)k.no_d_id) << 30) | (((uint64_t)k.no_o_id));
 }
 
 static constexpr uint64_t oorder_bits = 0;
 static inline uint64_t oorder(const oorder::key &k) {
-  // w_id, 4b d_id, 20b o_id
-  return (((uint64_t)k.o_w_id) << 24) | (((uint64_t)k.o_d_id) << 20) | (((uint64_t)k.o_id));
+  // w_id, 4b d_id, 30b o_id
+  return (((uint64_t)k.o_w_id) << 34) | (((uint64_t)k.o_d_id) << 30) | (((uint64_t)k.o_id));
 }
 
-static constexpr uint64_t oorder_c_id_idx_bits = 20;
+static constexpr uint64_t oorder_c_id_idx_bits = 30;
 static inline uint64_t oorder_c_id_idx(const oorder_c_id_idx::key &k) {
-  // w_id, 4b d_id, 20b c_id, 20b o_id
+  // w_id, 4b d_id, 12b c_id, 30b o_id
   // o_id is reversed!
-  return (((uint64_t)k.o_w_id) << 44) | (((uint64_t)k.o_d_id) << 40) |
-    (((uint64_t)k.o_c_id) << 20) | ((0xFFFFFULL - (uint64_t)k.o_o_id));
+  return (((uint64_t)k.o_w_id) << 46) | (((uint64_t)k.o_d_id) << 42) |
+    (((uint64_t)k.o_c_id) << 30) | ((0x3FFFFFFFULL - (uint64_t)k.o_o_id));
 }
 
 static constexpr uint64_t order_line_bits = 4;
 static inline uint64_t order_line(const order_line::key &k) {
-  // w_id, 4b d_id, 20b o_id, 4b ol_number
-  return (((uint64_t)k.ol_w_id) << 28) | (((uint64_t)k.ol_d_id) << 24) |
+  // w_id, 4b d_id, 30b o_id, 4b ol_number
+  return (((uint64_t)k.ol_w_id) << 38) | (((uint64_t)k.ol_d_id) << 34) |
     (((uint64_t)k.ol_o_id) << 4) | (((uint64_t)k.ol_number));
 }
 
