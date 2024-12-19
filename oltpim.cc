@@ -425,11 +425,11 @@ ConcurrentMasstreeIndex::pim_ScanBegin(transaction *t, const uint64_t &start_key
       begin_key <= end_key; begin_key += key_interval, ++cnt) {
     auto *req = (request_scan_base*)&scan_req[scan_req_size * cnt];
     auto &args = req->args;
-    args.max_outs = max_keys_per_interval;
-    args.index_id = index_id;
+    args.xid_s.max_outs = max_keys_per_interval;
+    args.xid_s.index_id = index_id;
+    args.xid_s.xid = xid;
     args.keys[0] = std::max(begin_key, start_key);
     args.keys[1] = std::min(begin_key + key_interval - 1, end_key);
-    args.xid = xid;
     args.csn = csn;
     oltpim::engine::g_engine.push(pim_id_of(begin_key), req);
   }
@@ -492,11 +492,11 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t &start_key, con
       begin_key <= end_key; begin_key += key_interval, ++cnt) {
     auto *req = (request_scan_base*)&scan_req[scan_req_size * cnt];
     auto &args = req->args;
-    args.max_outs = max_keys_per_interval;
-    args.index_id = index_id;
+    args.xid_s.max_outs = max_keys_per_interval;
+    args.xid_s.index_id = index_id;
+    args.xid_s.xid = xid;
     args.keys[0] = std::max(begin_key, start_key);
     args.keys[1] = std::min(begin_key + key_interval - 1, end_key);
-    args.xid = xid;
     args.csn = csn;
     oltpim::engine::g_engine.push(pim_id_of(begin_key), req);
   }
