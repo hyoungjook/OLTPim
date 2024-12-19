@@ -10,6 +10,8 @@
 #include "../../oltpim.h"
 #include "interface_host.hpp"
 
+DEFINE_bool(tpcc_oltpim_multiget, false, "Use multiget for TPC-C oltpim benchcmark");
+
 /* pim scan callback */
 #define DECLARE_SCAN_RETS_SIZE(_1, name, _2, _3, _4, _5, \
                                rets_size, rets_size_supp, ...) \
@@ -71,10 +73,22 @@ class tpcc_oltpim_worker : public bench_worker, public tpcc_worker_mixin {
     return static_cast<tpcc_oltpim_worker *>(w)->txn_new_order(txn, idx);
   }
 
+  ermia::coro::task<rc_t> txn_new_order_multiget(ermia::transaction *txn, uint32_t idx);
+
+  static ermia::coro::task<rc_t> TxnNewOrderMultiGet(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
+    return static_cast<tpcc_oltpim_worker *>(w)->txn_new_order_multiget(txn, idx);
+  }
+
   ermia::coro::task<rc_t> txn_delivery(ermia::transaction *txn, uint32_t idx);
 
   static ermia::coro::task<rc_t> TxnDelivery(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
     return static_cast<tpcc_oltpim_worker *>(w)->txn_delivery(txn, idx);
+  }
+
+  ermia::coro::task<rc_t> txn_delivery_multiget(ermia::transaction *txn, uint32_t idx);
+
+  static ermia::coro::task<rc_t> TxnDeliveryMultiGet(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
+    return static_cast<tpcc_oltpim_worker *>(w)->txn_delivery_multiget(txn, idx);
   }
 
   ermia::coro::task<rc_t> txn_credit_check(ermia::transaction *txn, uint32_t idx);
@@ -89,6 +103,12 @@ class tpcc_oltpim_worker : public bench_worker, public tpcc_worker_mixin {
     return static_cast<tpcc_oltpim_worker *>(w)->txn_payment(txn, idx);
   }
 
+  ermia::coro::task<rc_t> txn_payment_multiget(ermia::transaction *txn, uint32_t idx);
+
+  static ermia::coro::task<rc_t> TxnPaymentMultiGet(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
+    return static_cast<tpcc_oltpim_worker *>(w)->txn_payment_multiget(txn, idx);
+  }
+
   ermia::coro::task<rc_t> txn_order_status(ermia::transaction *txn, uint32_t idx);
 
   static ermia::coro::task<rc_t> TxnOrderStatus(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
@@ -99,6 +119,12 @@ class tpcc_oltpim_worker : public bench_worker, public tpcc_worker_mixin {
 
   static ermia::coro::task<rc_t> TxnStockLevel(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
     return static_cast<tpcc_oltpim_worker *>(w)->txn_stock_level(txn, idx);
+  }
+
+  ermia::coro::task<rc_t> txn_stock_level_multiget(ermia::transaction *txn, uint32_t idx);
+
+  static ermia::coro::task<rc_t> TxnStockLevelMultiGet(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
+    return static_cast<tpcc_oltpim_worker *>(w)->txn_stock_level_multiget(txn, idx);
   }
 
   ermia::coro::task<rc_t> txn_query2(ermia::transaction *txn, uint32_t idx);
@@ -1055,7 +1081,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
     const uint64_t pk_i = tpcc_key64::item(k_i);
     item::value v_i_temp;
 
-    rc = co_await tbl_item(1)->pim_GetRecord(txn, pk_i, valptr);
+    rc = co_await tbl_item(warehouse_id)->pim_GetRecord(txn, pk_i, valptr);
     TryVerifyRelaxedOltpim(rc);
 
     const item::value *v_i = Decode(valptr, v_i_temp);
@@ -1115,6 +1141,234 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order(ermia::transaction *tx
 #endif
   co_return {RC_TRUE};
 }  // new-order
+
+ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order_multiget(ermia::transaction *txn, uint32_t idx) {
+  uint _home_warehouse_id = 0;
+  if (likely(FLAGS_tpcc_coro_local_wh)) {
+    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
+  } else {
+    _home_warehouse_id = home_warehouse_id;
+  }
+  const uint warehouse_id = pick_wh(r, _home_warehouse_id);
+  const uint districtID = RandomNumber(r, 1, 10);
+  const uint customerID = GetCustomerId(r);
+  const uint numItems = RandomNumber(r, 5, 15);
+  uint itemIDs[15], supplierWarehouseIDs[15], orderQuantities[15];
+  bool allLocal = true;
+  for (uint i = 0; i < numItems; i++) {
+    itemIDs[i] = GetItemId(r);
+    if (likely(FLAGS_tpcc_disable_xpartition_txn || NumWarehouses() == 1 ||
+               RandomNumber(r, 1, 100) > FLAGS_tpcc_new_order_remote_item_pct)) {
+      supplierWarehouseIDs[i] = warehouse_id;
+    } else {
+      do {
+        supplierWarehouseIDs[i] = RandomNumber(r, 1, NumWarehouses());
+      } while (supplierWarehouseIDs[i] == warehouse_id);
+      allLocal = false;
+    }
+    orderQuantities[i] = RandomNumber(r, 1, 10);
+  }
+  ASSERT(!FLAGS_tpcc_disable_xpartition_txn || allLocal);
+
+  txn->GetXIDContext()->begin_epoch = 0;
+
+  rc_t rc = rc_t{RC_INVALID};
+  ermia::varstr valptr;
+
+  // C.get W.get D.get I.get
+  district::value v_d;
+  float i_price[15];
+  {
+    oltpim::request_get req_c_get, req_w_get, req_d_get;
+    oltpim::request_get reqs_i_get[15];
+    {
+      const customer::key k_c(warehouse_id, districtID, customerID);
+      const uint64_t pk_c = tpcc_key64::customer(k_c);
+      tbl_customer(warehouse_id)->pim_GetRecordBegin(txn, pk_c, &req_c_get);
+    }
+    {
+      const warehouse::key k_w(warehouse_id);
+      const uint64_t pk_w = tpcc_key64::warehouse(k_w);
+      tbl_warehouse(warehouse_id)->pim_GetRecordBegin(txn, pk_w, &req_w_get);
+    }
+    {
+      const district::key k_d(warehouse_id, districtID);
+      const uint64_t pk_d = tpcc_key64::district(k_d);
+      tbl_district(warehouse_id)->pim_GetRecordBegin(txn, pk_d, &req_d_get);
+    }
+    for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+      const item::key k_i(itemIDs[ol_number - 1]);
+      const uint64_t pk_i = tpcc_key64::item(k_i);
+      tbl_item(warehouse_id)->pim_GetRecordBegin(txn, pk_i, &reqs_i_get[ol_number-1]);
+    }
+    rc._val = RC_TRUE;
+    {
+      rc_t _rc = co_await tbl_customer(warehouse_id)->pim_GetRecordEnd(txn, valptr, &req_c_get);
+      if (_rc._val != RC_TRUE) rc = _rc;
+      else {
+        customer::value v_c;
+        Decode(valptr, v_c);
+      }
+    }
+    {
+      rc_t _rc = co_await tbl_warehouse(warehouse_id)->pim_GetRecordEnd(txn, valptr, &req_w_get);
+      if (_rc._val != RC_TRUE) rc = _rc;
+      else {
+        warehouse::value v_w;
+        Decode(valptr, v_w);
+      }
+    }
+    {
+      rc_t _rc = co_await tbl_district(warehouse_id)->pim_GetRecordEnd(txn, valptr, &req_d_get);
+      if (_rc._val != RC_TRUE) rc = _rc;
+      else {
+        Decode(valptr, v_d);
+      }
+    }
+    for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+      rc_t _rc = co_await tbl_item(warehouse_id)->pim_GetRecordEnd(txn, valptr, &reqs_i_get[ol_number-1]);
+      if (_rc._val != RC_TRUE) rc = _rc;
+      else {
+        item::value v_i;
+        Decode(valptr, v_i);
+        i_price[ol_number-1] = v_i.i_price;
+      }
+    }
+    TryVerifyRelaxedOltpim(rc);
+  }
+  const uint64_t my_next_o_id = v_d.d_next_o_id;
+  // D.update, NO.insert, O.insert, OL.insert
+  uint64_t v_oo_oid = 0;
+  {
+    oltpim::request_update req_d_update;
+    oltpim::request_insert req_no_insert, req_oo_insert;
+    oltpim::request_insert reqs_ol_insert[15];
+    {
+      const district::key k_d(warehouse_id, districtID);
+      const uint64_t pk_d = tpcc_key64::district(k_d);
+      v_d.d_next_o_id++;
+      tbl_district(warehouse_id)->pim_UpdateRecordBegin(txn, pk_d, 
+        Encode(str(arenas[idx], Size(v_d)), v_d), &req_d_update);
+    }
+    {
+      const new_order::key k_no(warehouse_id, districtID, my_next_o_id);
+      const uint64_t pk_no = tpcc_key64::new_order(k_no);
+      const new_order::value v_no(warehouse_id, districtID, my_next_o_id);
+      tbl_new_order(warehouse_id)->pim_InsertRecordBegin(txn, pk_no,
+        Encode(str(arenas[idx], Size(v_no)), v_no), &req_no_insert);
+    }
+    {
+      const oorder::key k_oo(warehouse_id, districtID, my_next_o_id);
+      const uint64_t pk_oo = tpcc_key64::oorder(k_oo);
+      oorder::value v_oo;
+      v_oo.o_w_id = warehouse_id;
+      v_oo.o_d_id = districtID;
+      v_oo.o_id = my_next_o_id;
+      v_oo.o_c_id = int32_t(customerID);
+      v_oo.o_carrier_id = 0;  // seems to be ignored
+      v_oo.o_ol_cnt = int8_t(numItems);
+      v_oo.o_all_local = allLocal;
+      v_oo.o_entry_d = GetCurrentTimeMillis();
+      tbl_oorder(warehouse_id)->pim_InsertRecordBegin(txn, pk_oo,
+        Encode(str(arenas[idx], Size(v_oo)), v_oo), &req_oo_insert);
+    }
+    for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+      const uint ol_quantity = orderQuantities[ol_number - 1];
+      const order_line::key k_ol(warehouse_id, districtID, my_next_o_id, ol_number);
+      const uint64_t pk_ol = tpcc_key64::order_line(k_ol);
+      order_line::value v_ol;
+      v_ol.ol_w_id = warehouse_id;
+      v_ol.ol_d_id = districtID;
+      v_ol.ol_o_id = my_next_o_id;
+      v_ol.ol_number = ol_number;
+      v_ol.ol_i_id = int32_t(itemIDs[ol_number - 1]);
+      v_ol.ol_delivery_d = 0;  // not delivered yet
+      v_ol.ol_amount = float(ol_quantity) * i_price[ol_number-1];
+      v_ol.ol_supply_w_id = int32_t(supplierWarehouseIDs[ol_number-1]);
+      v_ol.ol_quantity = int8_t(ol_quantity);
+      tbl_order_line(warehouse_id)->pim_InsertRecordBegin(txn, pk_ol,
+        Encode(str(arenas[idx], Size(v_ol)), v_ol), &reqs_ol_insert[ol_number-1]);
+    }
+    {
+      rc_t _rc = co_await tbl_district(warehouse_id)->pim_UpdateRecordEnd(txn, &req_d_update);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+    {
+      {
+      rc_t _rc = co_await tbl_new_order(warehouse_id)->pim_InsertRecordEnd(txn, &req_no_insert);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+      rc_t _rc = co_await tbl_oorder(warehouse_id)->pim_InsertRecordEnd(txn, &req_oo_insert, &v_oo_oid);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+    for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+      rc_t _rc = co_await tbl_order_line(warehouse_id)->pim_InsertRecordEnd(txn, &reqs_ol_insert[ol_number-1]);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+    TryCatchOltpim(rc);
+  }
+  // O.insertOID, S.get
+  stock::value v_s[15];
+  {
+    oltpim::request_insert req_oo_insertoid;
+    oltpim::request_get reqs_s_get[15];
+    {
+      const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID, my_next_o_id);
+      const uint64_t pk_oo_idx = tpcc_key64::oorder_c_id_idx(k_oo_idx);
+      tbl_oorder_c_id_idx(warehouse_id)->pim_InsertOIDBegin(txn, pk_oo_idx, v_oo_oid, &req_oo_insertoid);
+    }
+    for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+      const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+      const stock::key k_s(ol_supply_w_id, itemIDs[ol_number-1]);
+      const uint64_t pk_s = tpcc_key64::stock(k_s);
+      tbl_stock(ol_supply_w_id)->pim_GetRecordBegin(txn, pk_s, &reqs_s_get[ol_number-1]);
+    }
+    {
+      rc_t _rc = co_await tbl_oorder_c_id_idx(warehouse_id)->pim_InsertOIDEnd(txn, &req_oo_insertoid);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+    for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+      const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+      rc_t _rc = co_await tbl_oorder_c_id_idx(ol_supply_w_id)->pim_GetRecordEnd(txn, valptr, &reqs_s_get[ol_number-1]);
+      if (_rc._val != RC_TRUE) rc = _rc;
+      else {
+        Decode(valptr, v_s[ol_number-1]);
+      }
+    }
+    TryCatchOltpim(rc);
+  }
+  // S.update
+  {
+    oltpim::request_update reqs_s_update[15];
+    for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+      const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+      const uint ol_quantity = orderQuantities[ol_number - 1];
+      const stock::key k_s(ol_supply_w_id, itemIDs[ol_number-1]);
+      const uint64_t pk_s = tpcc_key64::stock(k_s);
+      auto &_v_s = v_s[ol_number-1];
+      if (_v_s.s_quantity - ol_quantity >= 10)
+        _v_s.s_quantity -= ol_quantity;
+      else
+        _v_s.s_quantity += -int32_t(ol_quantity) + 91;
+      _v_s.s_ytd += ol_quantity;
+      _v_s.s_remote_cnt += (ol_supply_w_id == warehouse_id) ? 0 : 1;
+      tbl_stock(ol_supply_w_id)->pim_UpdateRecordBegin(txn, pk_s, 
+        Encode(str(arenas[idx], Size(_v_s)), _v_s), &reqs_s_update[ol_number-1]);
+    }
+    for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+      const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+      rc_t _rc = co_await tbl_stock(ol_supply_w_id)->pim_UpdateRecordEnd(txn, &reqs_s_update[ol_number-1]);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+    TryCatchOltpim(rc);
+  }
+
+#ifndef CORO_BATCH_COMMIT
+  rc = co_await txn->oltpim_commit();
+  TryCatchOltpim(rc);
+#endif
+  co_return {RC_TRUE};
+}
 
 ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn, uint32_t idx) {
   uint _home_warehouse_id = 0;
@@ -1286,6 +1540,178 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
   co_return {RC_TRUE};
 }  // payment
 
+ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment_multiget(ermia::transaction *txn, uint32_t idx) {
+  uint _home_warehouse_id = 0;
+  if (likely(FLAGS_tpcc_coro_local_wh)) {
+    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
+  } else {
+    _home_warehouse_id = home_warehouse_id;
+  }
+  const uint warehouse_id = pick_wh(r, _home_warehouse_id);
+  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+  uint customerDistrictID, customerWarehouseID;
+  if (likely(FLAGS_tpcc_disable_xpartition_txn || NumWarehouses() == 1 ||
+             RandomNumber(r, 1, 100) <= 85)) {
+    customerDistrictID = districtID;
+    customerWarehouseID = warehouse_id;
+  } else {
+    customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+    do {
+      customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
+    } while (customerWarehouseID == warehouse_id);
+  }
+  const float paymentAmount = (float)(RandomNumber(r, 100, 500000) / 100.0);
+  const uint32_t ts = GetCurrentTimeMillis();
+  ASSERT(!FLAGS_tpcc_disable_xpartition_txn || customerWarehouseID == warehouse_id);
+
+  txn->GetXIDContext()->begin_epoch = 0;
+
+  rc_t rc = rc_t{RC_INVALID};
+  ermia::varstr valptr;
+  // C2.scan || C.get
+  customer::value v_c;
+  {
+    if (RandomNumber(r, 1, 100) <= 60) {
+      // cust by name
+      uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
+      static_assert(sizeof(lastname_buf) == 16, "xx");
+      memset(lastname_buf, 0, sizeof(lastname_buf));
+      GetNonUniformCustomerLastNameRun(lastname_buf, r);
+      customer_name_idx::key k_c_idx;
+      k_c_idx.c_w_id = customerWarehouseID;
+      k_c_idx.c_d_id = customerDistrictID;
+      k_c_idx.c_last.assign((const char *)lastname_buf, 16);
+      const uint64_t pk_c_idx_0 = tpcc_key64::customer_name_idx(k_c_idx, true, false);
+      const uint64_t pk_c_idx_1 = tpcc_key64::customer_name_idx(k_c_idx, false, true);
+      pim_static_limit_callback<NMaxCustomerIdxScanElems,false> c;
+      rc = co_await tbl_customer_name_idx(customerWarehouseID)
+             ->pim_Scan(txn, pk_c_idx_0, pk_c_idx_1, c, NMaxCustomerIdxScanElems);
+      TryCatchOltpim(rc);
+      ALWAYS_ASSERT(c.size() > 0);
+      int index = c.size() / 2;
+      if (c.size() % 2 == 0) index--;
+      Decode(c.values[index], v_c);
+    }
+    else {
+      // cust by ID
+      const uint customerID = GetCustomerId(r);
+      const customer::key k_c(customerWarehouseID, customerDistrictID, customerID);
+      const uint64_t pk_c = tpcc_key64::customer(k_c);
+      rc = co_await tbl_customer(customerWarehouseID)->pim_GetRecord(txn, pk_c, valptr);
+      TryVerifyRelaxedOltpim(rc);
+      Decode(valptr, v_c);
+    }
+  }
+  // W.get, D.get, C.update
+  warehouse::value v_w;
+  district::value v_d;
+  {
+    oltpim::request_get req_w_get, req_d_get;
+    oltpim::request_update req_c_update;
+    {
+      const warehouse::key k_w(warehouse_id);
+      const uint64_t pk_w = tpcc_key64::warehouse(k_w);
+      tbl_warehouse(warehouse_id)->pim_GetRecordBegin(txn, pk_w, &req_w_get);
+    }
+    {
+      const district::key k_d(warehouse_id, districtID);
+      const uint64_t pk_d = tpcc_key64::district(k_d);
+      tbl_district(warehouse_id)->pim_GetRecordBegin(txn, pk_d, &req_d_get);
+    }
+    {
+      const customer::key k_c(customerWarehouseID, customerDistrictID, v_c.c_id);
+      const uint64_t pk_c = tpcc_key64::customer(k_c);
+      v_c.c_balance -= paymentAmount;
+      v_c.c_ytd_payment += paymentAmount;
+      v_c.c_payment_cnt++;
+      if (strncmp(v_c.c_credit.data(), "BC", 2) == 0) {
+        char buf[501];
+        int n = snprintf(buf, sizeof(buf), "%d %d %d %d %d %f | %s", k_c.c_id,
+                         k_c.c_d_id, k_c.c_w_id, districtID, warehouse_id,
+                         paymentAmount, v_c.c_data.c_str());
+        v_c.c_data.resize_junk(
+            std::min(static_cast<size_t>(n), v_c.c_data.max_size()));
+        memcpy((void *)v_c.c_data.data(), &buf[0], v_c.c_data.size());
+      }
+      tbl_customer(warehouse_id)->pim_UpdateRecordBegin(txn, pk_c,
+        Encode(str(arenas[idx], Size(v_c)), v_c), &req_c_update);
+    }
+    {
+      rc_t _rc = co_await tbl_warehouse(warehouse_id)->pim_GetRecordEnd(txn, valptr, &req_w_get);
+      ALWAYS_ASSERT(_rc._val == RC_TRUE || _rc.IsAbort());
+      if (_rc._val != RC_TRUE) rc = _rc;
+      else {
+        Decode(valptr, v_w);
+      }
+    }
+    {
+      rc_t _rc = co_await tbl_district(warehouse_id)->pim_GetRecordEnd(txn, valptr, &req_d_get);
+      ALWAYS_ASSERT(_rc._val == RC_TRUE || _rc.IsAbort());
+      if (_rc._val != RC_TRUE) rc = _rc;
+      else {
+        Decode(valptr, v_d);
+      }
+    }
+    {
+      rc_t _rc = co_await tbl_customer(warehouse_id)->pim_UpdateRecordEnd(txn, &req_c_update);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+    TryCatchOltpim(rc);
+  }
+  // W.update, D.update, H.insert
+  {
+    oltpim::request_update req_w_update, req_d_update;
+    oltpim::request_insert req_h_insert;
+    {
+      const warehouse::key k_w(warehouse_id);
+      const uint64_t pk_w = tpcc_key64::warehouse(k_w);
+      v_w.w_ytd += paymentAmount;
+      tbl_warehouse(warehouse_id)->pim_UpdateRecordBegin(txn, pk_w,
+        Encode(str(arenas[idx], Size(v_w)), v_w), &req_w_update);
+    }
+    {
+      const district::key k_d(warehouse_id, districtID);
+      const uint64_t pk_d = tpcc_key64::district(k_d);
+      v_d.d_ytd += paymentAmount;
+      tbl_district(warehouse_id)->pim_UpdateRecordBegin(txn, pk_d,
+        Encode(str(arenas[idx], Size(v_d)), v_d), &req_d_update);
+    }
+    {
+      const history::key k_h(customerDistrictID, customerWarehouseID, v_c.c_id,
+        districtID, warehouse_id, ts);
+      const uint64_t pk_h = tpcc_key64::history(k_h);
+      history::value v_h;
+      v_h.h_amount = paymentAmount;
+      v_h.h_data.resize_junk(v_h.h_data.max_size());
+      int n = snprintf((char *)v_h.h_data.data(), v_h.h_data.max_size() + 1,
+                   "%.10s    %.10s", v_w.w_name.c_str(), v_d.d_name.c_str());
+      v_h.h_data.resize_junk(
+        std::min(static_cast<size_t>(n), v_h.h_data.max_size()));
+      tbl_history(warehouse_id)->pim_InsertRecordBegin(txn, pk_h,
+        Encode(str(arenas[idx], Size(v_h)), v_h), &req_h_insert);
+    }
+    {
+      rc_t _rc = co_await tbl_warehouse(warehouse_id)->pim_UpdateRecordEnd(txn, &req_w_update);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+    {
+      rc_t _rc = co_await tbl_district(warehouse_id)->pim_UpdateRecordEnd(txn, &req_d_update);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+    {
+      rc_t _rc = co_await tbl_history(warehouse_id)->pim_InsertRecordEnd(txn, &req_h_insert);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+    TryCatchOltpim(rc);
+  }
+
+#ifndef CORO_BATCH_COMMIT
+  rc = co_await txn->oltpim_commit();
+  TryCatchOltpim(rc);
+#endif
+  co_return {RC_TRUE};
+}
+
 ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn, uint32_t idx) {
   ermia::TXN::xid_context *xc = txn->GetXIDContext();
   // TODO: fix epoch
@@ -1432,6 +1858,148 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery(ermia::transaction *txn
 
   co_return {RC_TRUE};
 }  // delivery
+
+ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery_multiget(ermia::transaction *txn, uint32_t idx) {
+  ermia::TXN::xid_context *xc = txn->GetXIDContext();
+  xc->begin_epoch = 0;
+  rc_t rc = rc_t{RC_INVALID};
+
+  uint _home_warehouse_id = 0;
+  if (likely(FLAGS_tpcc_coro_local_wh)) {
+    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
+  } else {
+    _home_warehouse_id = home_warehouse_id;
+  }
+  const uint warehouse_id = pick_wh(r, _home_warehouse_id);
+  const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+  const uint32_t ts = GetCurrentTimeMillis();
+
+  ermia::varstr valptr;
+  for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
+    // NO.scan
+    int32_t no_o_id = 0;
+    {
+      const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
+      const uint64_t pk_no_0 = tpcc_key64::new_order(k_no_0);
+      const new_order::key k_no_1(warehouse_id, d,
+                                  0xFFFFFUL); // 20bit encoded
+      const uint64_t pk_no_1 = tpcc_key64::new_order(k_no_1);
+      pim_static_limit_callback<1,true> new_order_c;
+      rc = co_await tbl_new_order(warehouse_id)
+               ->pim_Scan(txn, pk_no_0, pk_no_1, new_order_c, 1);
+      TryCatchOltpim(rc);
+      if (unlikely(new_order_c.size() == 0)) continue;
+      new_order::value v_no;
+      Decode(new_order_c.values[0], v_no);
+      last_no_o_ids[d - 1] = v_no.no_o_id + 1;  // XXX: update last seen
+      no_o_id = v_no.no_o_id;
+    }
+    // NO.remove, O.get, OL.scan
+    oorder::value v_oo;
+    pim_static_limit_callback<15, true> c_ol;
+    {
+      oltpim::request_remove req_no_remove;
+      oltpim::request_get req_oo_get;
+      {
+        const new_order::key k_no(warehouse_id, d, no_o_id);
+        const uint64_t pk_no = tpcc_key64::new_order(k_no);
+        tbl_new_order(warehouse_id)->pim_RemoveRecordBegin(txn, pk_no, &req_no_remove);
+      }
+      {
+        const oorder::key k_oo(warehouse_id, d, no_o_id);
+        const uint64_t pk_oo = tpcc_key64::oorder(k_oo);
+        tbl_oorder(warehouse_id)->pim_GetRecordBegin(txn, pk_oo, &req_oo_get);
+      }
+      {
+        const order_line::key k_oo_0(warehouse_id, d, no_o_id, 0);
+        const uint64_t pk_oo_0 = tpcc_key64::order_line(k_oo_0);
+        const order_line::key k_oo_1(warehouse_id, d, no_o_id,
+                                     0xFUL); // 4bit encoded
+        const uint64_t pk_oo_1 = tpcc_key64::order_line(k_oo_1);
+        tbl_order_line(warehouse_id)->pim_ScanBegin(txn, pk_oo_0, pk_oo_1, c_ol, 15);
+      }
+      {
+        rc_t _rc = co_await tbl_new_order(warehouse_id)->pim_RemoveRecordEnd(txn, &req_no_remove);
+        if (_rc._val != RC_TRUE) rc = _rc;
+      }
+      {
+        rc_t _rc = co_await tbl_oorder(warehouse_id)->pim_GetRecordEnd(txn, valptr, &req_oo_get);
+        if (_rc._val != RC_TRUE) rc = _rc;
+        else {
+          Decode(valptr, v_oo);
+        }
+      }
+      {
+        rc_t _rc = co_await tbl_order_line(warehouse_id)->pim_ScanEnd(txn, c_ol);
+        if (_rc._val != RC_TRUE) rc = _rc;
+      }
+      TryCatchOltpim(rc);
+    }
+    // C.get, O.update, OL.update
+    customer::value v_c;
+    float ol_total = 0.0;
+    {
+      oltpim::request_get req_c_get;
+      oltpim::request_update req_oo_update;
+      oltpim::request_update reqs_ol_update[15];
+      {
+        const customer::key k_c(warehouse_id, d, v_oo.o_c_id);
+        const uint64_t pk_c = tpcc_key64::customer(k_c);
+        tbl_customer(warehouse_id)->pim_GetRecordBegin(txn, pk_c, &req_c_get);
+      }
+      {
+        const oorder::key k_oo(warehouse_id, d, no_o_id);
+        const uint64_t pk_oo = tpcc_key64::oorder(k_oo);
+        v_oo.o_carrier_id = o_carrier_id;
+        tbl_oorder(warehouse_id)->pim_UpdateRecordBegin(txn, pk_oo, 
+          Encode(str(arenas[idx], Size(v_oo)), v_oo), &req_oo_update);
+      }
+      for (uint32_t i = 0; i < c_ol.size(); ++i) {
+        order_line::value v_ol;
+        Decode(c_ol.values[i], v_ol);
+        ol_total += v_ol.ol_amount;
+        const order_line::key k_ol(v_ol.ol_w_id, v_ol.ol_d_id, v_ol.ol_o_id, v_ol.ol_number);
+        const uint64_t pk_ol = tpcc_key64::order_line(k_ol);
+        v_ol.ol_delivery_d = ts;
+        tbl_order_line(warehouse_id)->pim_UpdateRecordBegin(txn, pk_ol,
+          Encode(str(arenas[idx], Size(v_ol)), v_ol), &reqs_ol_update[i]);
+      }
+      {
+        rc_t _rc = co_await tbl_customer(warehouse_id)->pim_GetRecordEnd(txn, valptr, &req_c_get);
+        ALWAYS_ASSERT(_rc._val == RC_TRUE || _rc.IsAbort());
+        if (_rc._val != RC_TRUE) rc = _rc;
+        else {
+          Decode(valptr, v_c);
+        }
+      }
+      {
+        rc_t _rc = co_await tbl_oorder(warehouse_id)->pim_UpdateRecordEnd(txn, &req_oo_update);
+        if (_rc._val != RC_TRUE) rc = _rc;
+      }
+      for (uint32_t i = 0; i < c_ol.size(); ++i) {
+        rc_t _rc = co_await tbl_order_line(warehouse_id)->pim_UpdateRecordEnd(txn, &reqs_ol_update[i]);
+        if (_rc._val != RC_TRUE) rc = _rc;
+      }
+      TryCatchOltpim(rc);
+    }
+    // C.update
+    {
+      const customer::key k_c(warehouse_id, d, v_oo.o_c_id);
+      const uint64_t pk_c = tpcc_key64::customer(k_c);
+      v_c.c_balance += ol_total;
+      rc = co_await tbl_customer(warehouse_id)->pim_UpdateRecord(txn, pk_c,
+        Encode(str(arenas[idx], Size(v_c)), v_c));
+      TryCatchOltpim(rc);
+    }
+  }
+
+#ifndef CORO_BATCH_COMMIT
+  rc = co_await txn->oltpim_commit();
+  TryCatchOltpim(rc);
+#endif
+
+  co_return {RC_TRUE};
+}
 
 ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_order_status(ermia::transaction *txn, uint32_t idx) {
   // NB: since txn_order_status() is a RO txn, we assume that
@@ -1644,6 +2212,83 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_stock_level(ermia::transaction *
   co_return {RC_TRUE};
 }  // stock-level
 
+ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_stock_level_multiget(ermia::transaction *txn, uint32_t idx) {
+  ermia::TXN::xid_context *xc = txn->GetXIDContext();
+  xc->begin_epoch = 0;
+  rc_t rc = rc_t{RC_INVALID};
+  uint _home_warehouse_id = 0;
+  if (likely(FLAGS_tpcc_coro_local_wh)) {
+    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
+  } else {
+    _home_warehouse_id = home_warehouse_id;
+  }
+  const uint warehouse_id = pick_wh(r, _home_warehouse_id);
+  const uint threshold = RandomNumber(r, 10, 20);
+  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+  ermia::varstr valptr;
+
+  // D.get
+  uint64_t cur_next_o_id = 0;
+  {
+    const district::key k_d(warehouse_id, districtID);
+    const uint64_t pk_d = tpcc_key64::district(k_d);
+    rc = co_await tbl_district(warehouse_id)->pim_GetRecord(txn, pk_d, valptr);
+    TryVerifyRelaxedOltpim(rc);
+    district::value v_d_temp;
+    const district::value *v_d = Decode(valptr, v_d_temp);
+    cur_next_o_id = v_d->d_next_o_id;
+  }
+  // OL.scan
+  pim_static_limit_callback<15, true, 20> c;
+  {
+    const int32_t lower = cur_next_o_id >= 20 ? (cur_next_o_id - 20) : 0;
+    const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
+    const uint64_t pk_ol_0 = tpcc_key64::order_line(k_ol_0);
+    const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id - 1, 0xFUL);
+    const uint64_t pk_ol_1 = tpcc_key64::order_line(k_ol_1);
+    rc = co_await tbl_order_line(warehouse_id)->pim_Scan(txn, pk_ol_0, pk_ol_1, c, 15);
+    TryCatchOltpim(rc);
+  }
+  // S.get
+  {
+    static constexpr uint32_t BATCH = 20;
+    oltpim::request_get reqs_stock_get[BATCH];
+    std::unordered_map<uint, bool> s_i_ids_distinct;
+    for (uint32_t i_begin = 0; i_begin < c.size(); i_begin += BATCH) {
+      const uint32_t num = std::min<uint32_t>(BATCH, c.size() - i_begin);
+      for (uint32_t i = 0; i < num; ++i) {
+        order_line::value v_ol;
+        Decode(c.values[i_begin + i], v_ol);
+        const stock::key k_s(warehouse_id, v_ol.ol_i_id);
+        const uint64_t pk_s = tpcc_key64::stock(k_s);
+        ASSERT(v_ol.ol_i_id >= 1 && v_ol.ol_i_id <= NumItems());
+        tbl_stock(warehouse_id)->pim_GetRecordBegin(txn, pk_s, &reqs_stock_get[i]);
+      }
+      for (uint32_t i = 0; i < num; ++i) {
+        rc_t _rc = co_await tbl_stock(warehouse_id)->pim_GetRecordEnd(txn, valptr, &reqs_stock_get[i]);
+        if (_rc._val != RC_TRUE) rc = _rc;
+        else {
+          const uint8_t *ptr = (const uint8_t *)valptr.data();
+          int16_t i16tmp;
+          ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
+          // recover v_ol.ol_i_id from key
+          int32_t ol_i_id = (int32_t)((reqs_stock_get[i].args.key) & 0x3FFFFUL);
+          if (i16tmp < int(threshold)) s_i_ids_distinct[ol_i_id] = 1;
+        }
+      }
+      TryVerifyRelaxedOltpim(rc);
+    }
+  }
+  // s_i_ids_distinct.size() is the computed result of this txn
+
+#ifndef CORO_BATCH_COMMIT
+  rc = co_await txn->oltpim_commit();
+  TryCatchOltpim(rc);
+#endif
+
+  co_return {RC_TRUE};
+}
+
 ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_credit_check(ermia::transaction *txn, uint32_t idx) {
   ALWAYS_ASSERT(false);
   co_return {RC_TRUE};
@@ -1676,22 +2321,27 @@ bench_worker::workload_desc_vec tpcc_oltpim_worker::get_workload() const {
   ALWAYS_ASSERT(m == 100);
   if (g_txn_workload_mix[0])
     w.push_back(workload_desc(
-        "NewOrder", double(g_txn_workload_mix[0]) / 100.0, nullptr, nullptr, TxnNewOrder));
+        "NewOrder", double(g_txn_workload_mix[0]) / 100.0, nullptr, nullptr,
+        (FLAGS_tpcc_oltpim_multiget ? TxnNewOrderMultiGet : TxnNewOrder)));
   if (g_txn_workload_mix[1])
     w.push_back(workload_desc(
-        "Payment", double(g_txn_workload_mix[1]) / 100.0, nullptr, nullptr, TxnPayment));
+        "Payment", double(g_txn_workload_mix[1]) / 100.0, nullptr, nullptr,
+        (FLAGS_tpcc_oltpim_multiget ? TxnPaymentMultiGet : TxnPayment)));
   if (g_txn_workload_mix[2])
     w.push_back(workload_desc(
         "CreditCheck",double(g_txn_workload_mix[2]) / 100.0, nullptr, nullptr, TxnCreditCheck));
   if (g_txn_workload_mix[3])
     w.push_back(workload_desc(
-        "Delivery", double(g_txn_workload_mix[3]) / 100.0, nullptr, nullptr, TxnDelivery));
+        "Delivery", double(g_txn_workload_mix[3]) / 100.0, nullptr, nullptr,
+        (FLAGS_tpcc_oltpim_multiget ? TxnDeliveryMultiGet : TxnDelivery)));
   if (g_txn_workload_mix[4])
     w.push_back(workload_desc(
         "OrderStatus", double(g_txn_workload_mix[4]) / 100.0, nullptr, nullptr, TxnOrderStatus));
+        // TxnOrderStatus is already expanded at best for multiget
   if (g_txn_workload_mix[5])
     w.push_back(workload_desc(
-        "StockLevel", double(g_txn_workload_mix[5]) / 100.0, nullptr, nullptr, TxnStockLevel));
+        "StockLevel", double(g_txn_workload_mix[5]) / 100.0, nullptr, nullptr,
+        (FLAGS_tpcc_oltpim_multiget ? TxnStockLevelMultiGet : TxnStockLevel)));
   if (g_txn_workload_mix[6])
     w.push_back(workload_desc(
         "Query2", double(g_txn_workload_mix[6]) / 100.0, nullptr, nullptr, TxnQuery2));

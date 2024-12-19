@@ -58,6 +58,7 @@ public:
   virtual void *scan_req_storage() = 0; // request_scan<max_outs_per_interval>[num_intervals]
   virtual size_t scan_req_storage_size() = 0; // sizeof(request_scan<max_outs_per_interval>)
   virtual void *get_req_storage() = 0;  // request_get[max_outs]
+  int storeval; // used to store cnt on pim_ScanBegin/End()
 };
 
 }
