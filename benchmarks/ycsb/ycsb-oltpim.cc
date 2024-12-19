@@ -230,8 +230,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       if (!ermia::config::index_probe_only) {
-        uint64_t pim_key = rng_gen_key(true);
-        rc = co_await table_index->pim_GetRecord(txn, pim_key, v);
+        rc = co_await table_index->pim_GetRecord(txn, rng_gen_key(true), v);
       } else {
         ALWAYS_ASSERT(false);
       }
@@ -262,8 +261,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     ASSERT(!ermia::config::index_probe_only);
     oltpim::request_get reqs[ops_per_hot_txn_const];
     for (int j = 0; j < FLAGS_ycsb_ops_per_hot_tx; ++j) {
-      uint64_t pim_key = rng_gen_key(true);
-      table_index->pim_GetRecordBegin(txn, pim_key, &reqs[j]);
+      table_index->pim_GetRecordBegin(txn, rng_gen_key(true), &reqs[j]);
     }
     rc_t rc;
     ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
@@ -313,8 +311,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
     for (int i = 0; i < FLAGS_ycsb_update_per_tx; ++i) {
       new (v.data()) ycsb_kv::value("a");
-      uint64_t pim_key = rng_gen_key(true);
-      auto rc = co_await table_index->pim_UpdateRecord(txn, pim_key, v);
+      auto rc = co_await table_index->pim_UpdateRecord(txn, rng_gen_key(true), v);
       TryCatchOltpim(rc);
     }
 
@@ -329,9 +326,8 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     oltpim::request_update reqs[ops_per_hot_txn_const];
     ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
     for (int j = 0; j < FLAGS_ycsb_update_per_tx; ++j) {
-      uint64_t pim_key = rng_gen_key(true);
       new (v.data()) ycsb_kv::value("a");
-      table_index->pim_UpdateRecordBegin(txn, pim_key, v, &reqs[j]);
+      table_index->pim_UpdateRecordBegin(txn, rng_gen_key(true), v, &reqs[j]);
     }
     rc_t rc{RC_TRUE};
     for (int j = 0; j < FLAGS_ycsb_update_per_tx; ++j) {

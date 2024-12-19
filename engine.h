@@ -231,28 +231,27 @@ public:
     }
     key_interval_offset = rand_offset;
   }
-  ermia::coro::task<rc_t> pim_GetRecord(transaction *t, const uint64_t &key, varstr &value);
-  ermia::coro::task<rc_t> pim_InsertRecord(transaction *t, const uint64_t &key, varstr &value, uint64_t *oid = nullptr);
-  ermia::coro::task<rc_t> pim_UpdateRecord(transaction *t, const uint64_t &key, varstr &value);
-  ermia::coro::task<rc_t> pim_RemoveRecord(transaction *t, const uint64_t &key);
-  ermia::coro::task<rc_t> pim_Scan(transaction *t, const uint64_t &start_key, const uint64_t &end_key,
+  ermia::coro::task<rc_t> pim_GetRecord(transaction *t, const uint64_t key, varstr &value);
+  ermia::coro::task<rc_t> pim_InsertRecord(transaction *t, const uint64_t key, varstr &value, uint64_t *oid = nullptr);
+  ermia::coro::task<rc_t> pim_UpdateRecord(transaction *t, const uint64_t key, varstr &value);
+  ermia::coro::task<rc_t> pim_RemoveRecord(transaction *t, const uint64_t key);
+  ermia::coro::task<rc_t> pim_Scan(transaction *t, const uint64_t start_key, const uint64_t end_key,
                               pim::PIMScanCallback &callback, uint32_t max_keys_per_interval);
-  ermia::coro::task<rc_t> pim_InsertOID(transaction *t, const uint64_t &key, uint64_t oid);
+  ermia::coro::task<rc_t> pim_InsertOID(transaction *t, const uint64_t key, uint64_t oid);
 
   // multi-get style interface
   // the user should allocate arg, ret, req of proper type
-  void pim_GetRecordBegin(transaction *t, const uint64_t &key, void *req);
+  void pim_GetRecordBegin(transaction *t, const uint64_t key, void *req);
   ermia::coro::task<rc_t> pim_GetRecordEnd(transaction *t, varstr &value, void *req);
-  void pim_UpdateRecordBegin(transaction *t, const uint64_t &key, varstr &value, void *req);
+  void pim_UpdateRecordBegin(transaction *t, const uint64_t key, varstr &value, void *req);
   ermia::coro::task<rc_t> pim_UpdateRecordEnd(transaction *t, void *req);
-  void pim_RemoveRecordBegin(transaction *t, const uint64_t &key, void *req);
+  void pim_RemoveRecordBegin(transaction *t, const uint64_t key, void *req);
   ermia::coro::task<rc_t> pim_RemoveRecordEnd(transaction *t, void *req);
-  void pim_InsertRecordBegin(transaction *t, const uint64_t &key, varstr &value,
-                             void *req);
+  void pim_InsertRecordBegin(transaction *t, const uint64_t key, varstr &value, void *req);
   ermia::coro::task<rc_t> pim_InsertRecordEnd(transaction *t, void *req, uint64_t *oid = nullptr);
-  void pim_InsertOIDBegin(transaction *t, const uint64_t &key, uint64_t oid, void *req);
+  void pim_InsertOIDBegin(transaction *t, const uint64_t key, uint64_t oid, void *req);
   ermia::coro::task<rc_t> pim_InsertOIDEnd(transaction *t, void *req);
-  void pim_ScanBegin(transaction *t, const uint64_t &start_key, const uint64_t &end_key,
+  void pim_ScanBegin(transaction *t, const uint64_t start_key, const uint64_t end_key,
                      pim::PIMScanCallback &callback, uint32_t max_keys_per_interval);
   ermia::coro::task<rc_t> pim_ScanEnd(transaction *t, pim::PIMScanCallback &callback);
 

@@ -58,7 +58,7 @@ void ConcurrentMasstreeIndex::assign_index_id() {
 
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
 void
-ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t &key, void *req_) {
+ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t key, void *req_) {
   ALWAYS_ASSERT(IsPrimary());
   auto *xc = t->xc;
   auto *req = (oltpim::request_get*)req_;
@@ -94,7 +94,7 @@ ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *r
 }
 #else
 void
-ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t &key, void *req_) {
+ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t key, void *req_) {
   ALWAYS_ASSERT(IsPrimary());
   auto *req = (oltpim::request_getonly*)req_;
   // req_ actually points to oltpim::request_get, just use the storage as
@@ -129,7 +129,7 @@ ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *r
 #endif
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t &key, varstr &value) {
+ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t key, varstr &value) {
   auto *xc = t->xc;
   rc_t rc;
 
@@ -184,7 +184,7 @@ ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t &key, vars
 
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
 void
-ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t &key, varstr &value, void *req_) {
+ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t key, varstr &value, void *req_) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
   auto *xc = t->xc;
@@ -223,7 +223,7 @@ ConcurrentMasstreeIndex::pim_InsertRecordEnd(transaction *t, void *req_, uint64_
 }
 #else
 void
-ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t &key, varstr &value, void *req_) {
+ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t key, varstr &value, void *req_) {
   ALWAYS_ASSERT(IsPrimary());
   // t->Insert(table_descriptor, false, &value, &tuple);
   OID oid;
@@ -267,7 +267,7 @@ ConcurrentMasstreeIndex::pim_InsertRecordEnd(transaction *t, void *req_, uint64_
 #endif
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_InsertRecord(transaction *t, const uint64_t &key, varstr &value, uint64_t *oid) {
+ConcurrentMasstreeIndex::pim_InsertRecord(transaction *t, const uint64_t key, varstr &value, uint64_t *oid) {
   oltpim::request_insert req;
   pim_InsertRecordBegin(t, key, value, &req);
   auto rc = co_await pim_InsertRecordEnd(t, &req, oid);
@@ -275,7 +275,7 @@ ConcurrentMasstreeIndex::pim_InsertRecord(transaction *t, const uint64_t &key, v
 }
 
 void
-ConcurrentMasstreeIndex::pim_InsertOIDBegin(transaction *t, const uint64_t &key, uint64_t oid, void *req_) {
+ConcurrentMasstreeIndex::pim_InsertOIDBegin(transaction *t, const uint64_t key, uint64_t oid, void *req_) {
   // For secondary index only
   ALWAYS_ASSERT(!IsPrimary());
   auto *xc = t->xc;
@@ -307,7 +307,7 @@ ConcurrentMasstreeIndex::pim_InsertOIDEnd(transaction *t, void *req_) {
 }
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_InsertOID(transaction *t, const uint64_t &key, uint64_t oid) {
+ConcurrentMasstreeIndex::pim_InsertOID(transaction *t, const uint64_t key, uint64_t oid) {
   oltpim::request_insert req;
   pim_InsertOIDBegin(t, key, oid, &req);
   auto rc = co_await pim_InsertOIDEnd(t, &req);
@@ -315,8 +315,7 @@ ConcurrentMasstreeIndex::pim_InsertOID(transaction *t, const uint64_t &key, uint
 }
 
 void
-ConcurrentMasstreeIndex::pim_UpdateRecordBegin(
-    transaction *t, const uint64_t &key, varstr &value, void *req_) {
+ConcurrentMasstreeIndex::pim_UpdateRecordBegin(transaction *t, const uint64_t key, varstr &value, void *req_) {
   ALWAYS_ASSERT(IsPrimary());
   auto *xc = t->xc;
   fat_ptr new_obj = Object::Create(&value, xc->begin_epoch);
@@ -355,7 +354,7 @@ ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_) {
 }
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_UpdateRecord(transaction *t, const uint64_t &key, varstr &value) {
+ConcurrentMasstreeIndex::pim_UpdateRecord(transaction *t, const uint64_t key, varstr &value) {
   oltpim::request_update req;
   pim_UpdateRecordBegin(t, key, value, &req);
   auto rc = co_await pim_UpdateRecordEnd(t, &req);
@@ -363,8 +362,7 @@ ConcurrentMasstreeIndex::pim_UpdateRecord(transaction *t, const uint64_t &key, v
 }
 
 void
-ConcurrentMasstreeIndex::pim_RemoveRecordBegin(
-    transaction *t, const uint64_t &key, void *req_) {
+ConcurrentMasstreeIndex::pim_RemoveRecordBegin(transaction *t, const uint64_t key, void *req_) {
   ALWAYS_ASSERT(IsPrimary());
   auto *xc = t->xc;
   auto *req = (oltpim::request_remove*)req_;
@@ -396,7 +394,7 @@ ConcurrentMasstreeIndex::pim_RemoveRecordEnd(transaction *t, void *req_) {
 }
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_RemoveRecord(transaction *t, const uint64_t &key) {
+ConcurrentMasstreeIndex::pim_RemoveRecord(transaction *t, const uint64_t key) {
   oltpim::request_remove req;
   pim_RemoveRecordBegin(t, key, &req);
   auto rc = co_await pim_RemoveRecordEnd(t, &req);
@@ -404,7 +402,7 @@ ConcurrentMasstreeIndex::pim_RemoveRecord(transaction *t, const uint64_t &key) {
 }
 
 void
-ConcurrentMasstreeIndex::pim_ScanBegin(transaction *t, const uint64_t &start_key, const uint64_t &end_key,
+ConcurrentMasstreeIndex::pim_ScanBegin(transaction *t, const uint64_t start_key, const uint64_t end_key,
               pim::PIMScanCallback &callback, uint32_t max_keys_per_interval) {
   ALWAYS_ASSERT(IsPrimary());
   auto *xc = t->xc;
@@ -472,7 +470,7 @@ ConcurrentMasstreeIndex::pim_ScanEnd(transaction *t, pim::PIMScanCallback &callb
 }
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t &start_key, const uint64_t &end_key,
+ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t start_key, const uint64_t end_key,
                               pim::PIMScanCallback &callback, uint32_t max_keys_per_interval) {
   auto *xc = t->xc;
   rc_t rc;

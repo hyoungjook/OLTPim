@@ -530,8 +530,7 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       warehouse_total_sz += sz;
       n_warehouses++;
 #if defined(OLTPIM)
-      uint64_t pk = tpcc_key64::warehouse(k);
-      TryVerifyStrict(sync_wait_oltpim_coro(tbl_warehouse(i)->pim_InsertRecord(txn, pk, Encode(str(sz), v))));
+      TryVerifyStrict(sync_wait_oltpim_coro(tbl_warehouse(i)->pim_InsertRecord(txn, tpcc_key64::warehouse(k), Encode(str(sz), v))));
 #elif defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
       TryVerifyStrict(sync_wait_coro(tbl_warehouse(i)->InsertRecord(txn, Encode(str(Size(k)), k),
                                                  Encode(str(sz), v))));
@@ -634,8 +633,7 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
         const size_t sz = Size(v);
         total_sz += sz;
 #if defined(OLTPIM)
-        const uint64_t pk = tpcc_key64::item(k);
-        tbl_item(1+loader_id)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &reqs[j]);
+        tbl_item(1+loader_id)->pim_InsertRecordBegin(txn, tpcc_key64::item(k), Encode(str(sz), v), &reqs[j]);
       }
       for (uint j = 0; j < num; ++j) {
         TryVerifyStrict(sync_wait_oltpim_coro(tbl_item(1+loader_id)->pim_InsertRecordEnd(txn, &reqs[j])));
@@ -829,8 +827,7 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
         district_total_sz += sz;
         n_districts++;
 #if defined(OLTPIM)
-        uint64_t pk = tpcc_key64::district(k);
-        TryVerifyStrict(sync_wait_oltpim_coro(tbl_district(w)->pim_InsertRecord(txn, pk, Encode(str(sz), v))));
+        TryVerifyStrict(sync_wait_oltpim_coro(tbl_district(w)->pim_InsertRecord(txn, tpcc_key64::district(k), Encode(str(sz), v))));
 #elif defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
         TryVerifyStrict(sync_wait_coro(tbl_district(w)->InsertRecord(txn, Encode(str(Size(k)), k),
                                                   Encode(str(sz), v))));
@@ -936,8 +933,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             // (c_w_id, c_d_id, c_last, c_first) -> OID
 
 #if defined(OLTPIM)
-            const uint64_t pk = tpcc_key64::customer(k);
-            tbl_customer(w)->pim_InsertRecordBegin(txn, pk, Encode(str(sz), v), &reqs[j]);
+            tbl_customer(w)->pim_InsertRecordBegin(txn, tpcc_key64::customer(k), Encode(str(sz), v), &reqs[j]);
             pk_idx[j] = tpcc_key64::customer_name_idx(k_idx);
           }
           for (uint j = 0; j < num; ++j) {
@@ -995,8 +991,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             v_hist.h_data.assign(RandomStr(r, RandomNumber(r, 10, 24)));
 
 #if defined(OLTPIM)
-            const uint64_t pk_hist = tpcc_key64::history(k_hist);
-            tbl_history(w)->pim_InsertRecordBegin(txn, pk_hist, Encode(str(Size(v_hist)), v_hist), &reqs[j]);
+            tbl_history(w)->pim_InsertRecordBegin(txn, tpcc_key64::history(k_hist), Encode(str(Size(v_hist)), v_hist), &reqs[j]);
           }
           for (uint j = 0; j < num; ++j) {
             TryVerifyStrict(sync_wait_oltpim_coro(tbl_history(w)->pim_InsertRecordEnd(txn, &reqs[j])));
@@ -1116,8 +1111,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
             oorder_total_sz += sz;
             n_oorders++;
 #if defined(OLTPIM)
-            const uint64_t pk_oo = tpcc_key64::oorder(k_oo);
-            tbl_oorder(w)->pim_InsertRecordBegin(txn, pk_oo, Encode(str(sz), v_oo), &reqs[j]);
+            tbl_oorder(w)->pim_InsertRecordBegin(txn, tpcc_key64::oorder(k_oo), Encode(str(sz), v_oo), &reqs[j]);
           }
           for (uint j = 0; j < num; ++j) {
             const uint c = c_begin + j;
@@ -1166,8 +1160,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
               new_order_total_sz += sz;
               n_new_orders++;
 #if defined(OLTPIM)
-              const uint64_t pk_no = tpcc_key64::new_order(k_no);
-              tbl_new_order(w)->pim_InsertRecordBegin(txn, pk_no, Encode(str(sz), v_no), &reqs[j]);
+              tbl_new_order(w)->pim_InsertRecordBegin(txn, tpcc_key64::new_order(k_no), Encode(str(sz), v_no), &reqs[j]);
             }
           }
           for (uint j = 0; j < num; ++j) {
@@ -1226,8 +1219,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
                 n_order_lines++;
 
 #if defined(OLTPIM)
-                const uint64_t pk_ol = tpcc_key64::order_line(k_ol);
-                tbl_order_line(w)->pim_InsertRecordBegin(txn, pk_ol, Encode(str(sz), v_ol), &reqs[batch_jdx]);
+                tbl_order_line(w)->pim_InsertRecordBegin(txn, tpcc_key64::order_line(k_ol), Encode(str(sz), v_ol), &reqs[batch_jdx]);
               }
             }
             for (uint j_in = 0; j_in < num_oos; ++j_in) {

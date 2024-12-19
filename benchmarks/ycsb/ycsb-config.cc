@@ -132,8 +132,7 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
       *(char *)v.p = 'a';
 
 #if defined(OLTPIM)
-      const uint64_t pk = hot_start_key + i;
-      main_index->pim_InsertRecordBegin(txn, pk, v, &reqs[j]);
+      main_index->pim_InsertRecordBegin(txn, hot_start_key + i, v, &reqs[j]);
     }
     for (uint64_t j = 0; j < num; ++j) {
       TryVerifyStrict(sync_wait_oltpim_coro(main_index->pim_InsertRecordEnd(txn, &reqs[j])));
