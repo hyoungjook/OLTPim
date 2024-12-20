@@ -1504,31 +1504,34 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment_multiget(ermia::transact
 
   rc_t rc = rc_t{RC_TRUE};
   uint customerID = 0;
-  // W.get, D.get, (C2.scan1 || C.get)
   ermia::varstr w_value, d_value, c_value;
-  {
+  // C2.scan1
+  { // c_callback scope
   pim_static_limit_callback<NMaxCustomerIdxScanElems, false> c_callback;
+  if (byname) { // cust by name
+    uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
+    static_assert(sizeof(lastname_buf) == 16, "xx");
+    memset(lastname_buf, 0, sizeof(lastname_buf));
+    GetNonUniformCustomerLastNameRun(lastname_buf, r);
+    customer_name_idx::key k_c_idx;
+    k_c_idx.c_w_id = customerWarehouseID;
+    k_c_idx.c_d_id = customerDistrictID;
+    k_c_idx.c_last.assign((const char *)lastname_buf, 16);
+    const uint64_t pk_c_idx_0 = tpcc_key64::customer_name_idx(k_c_idx, true, false);
+    const uint64_t pk_c_idx_1 = tpcc_key64::customer_name_idx(k_c_idx, false, true);
+    tbl_customer_name_idx(customerWarehouseID)->pim_ScanBegin(
+      txn, pk_c_idx_0, pk_c_idx_1, c_callback, NMaxCustomerIdxScanElems);
+    rc = co_await tbl_customer_name_idx(customerWarehouseID)->pim_ScanEnd(txn, c_callback, NMaxCustomerIdxScanElems);
+    TryCatchOltpim(rc);
+  }
+  // W.get, D.get, (C2.scan2 || C.get)
   {
     oltpim::request_get req_w_get, req_d_get, req_c_get;
     tbl_warehouse(warehouse_id)->pim_GetRecordBegin(txn, 
       tpcc_key64::warehouse(warehouse::key(warehouse_id)), &req_w_get);
     tbl_district(warehouse_id)->pim_GetRecordBegin(txn, 
       tpcc_key64::district(district::key(warehouse_id, districtID)), &req_d_get);
-    if (byname) { // cust by name
-      uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
-      static_assert(sizeof(lastname_buf) == 16, "xx");
-      memset(lastname_buf, 0, sizeof(lastname_buf));
-      GetNonUniformCustomerLastNameRun(lastname_buf, r);
-      customer_name_idx::key k_c_idx;
-      k_c_idx.c_w_id = customerWarehouseID;
-      k_c_idx.c_d_id = customerDistrictID;
-      k_c_idx.c_last.assign((const char *)lastname_buf, 16);
-      const uint64_t pk_c_idx_0 = tpcc_key64::customer_name_idx(k_c_idx, true, false);
-      const uint64_t pk_c_idx_1 = tpcc_key64::customer_name_idx(k_c_idx, false, true);
-      tbl_customer_name_idx(customerWarehouseID)->pim_ScanBegin(
-        txn, pk_c_idx_0, pk_c_idx_1, c_callback, NMaxCustomerIdxScanElems);
-    }
-    else { // cust by ID
+    if (!byname) { // cust by ID
       customerID = GetCustomerId(r);
       tbl_customer(customerWarehouseID)->pim_GetRecordBegin(txn,
         tpcc_key64::customer(customer::key(customerWarehouseID, customerDistrictID, customerID)), &req_c_get);
@@ -1540,7 +1543,12 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment_multiget(ermia::transact
     ALWAYS_ASSERT(_rc._val == RC_TRUE || _rc.IsAbort());
     if (_rc._val != RC_TRUE) rc = _rc;
     if (byname) {
-      _rc = co_await tbl_customer_name_idx(customerWarehouseID)->pim_ScanEnd(txn, c_callback, NMaxCustomerIdxScanElems);
+      rc = co_await tbl_customer_name_idx(customerWarehouseID)->pim_ScanEndSecondary(txn, c_callback);
+      TryCatchOltpim(rc);
+      ALWAYS_ASSERT(c_callback.size() > 0);
+      int index = c_callback.size() / 2;
+      if (c_callback.size() % 2 == 0) index--;
+      c_value = c_callback.values[index];
     }
     else {
       _rc = co_await tbl_customer(customerWarehouseID)->pim_GetRecordEnd(txn, c_value, &req_c_get);
@@ -1549,16 +1557,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment_multiget(ermia::transact
     }
     TryCatchOltpim(rc);
   }
-  // C2.scan2
-  if (byname) {
-    rc = co_await tbl_customer_name_idx(customerWarehouseID)->pim_ScanEndSecondary(txn, c_callback);
-    TryCatchOltpim(rc);
-    ALWAYS_ASSERT(c_callback.size() > 0);
-    int index = c_callback.size() / 2;
-    if (c_callback.size() % 2 == 0) index--;
-    c_value = c_callback.values[index];
-  }
-  }
+  } // c_callback scope end
   // W.update, D.update, C.update, H.insert
   {
     oltpim::request_update req_w_update, req_d_update, req_c_update;
