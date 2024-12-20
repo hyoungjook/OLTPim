@@ -1779,7 +1779,6 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery_multiget(ermia::transac
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   const uint32_t ts = GetCurrentTimeMillis();
 
-  ermia::varstr valptr;
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
     // NO.scan
     int32_t no_o_id = 0;
@@ -1798,11 +1797,12 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery_multiget(ermia::transac
       no_o_id = v_no.no_o_id;
     }
     // NO.remove, O.get, OL.scan
-    oorder::value v_oo;
-    pim_static_limit_callback<15, true> c_ol;
+    ermia::varstr oo_value;
+    std::vector<ermia::varstr> c_ol_values;
     {
       oltpim::request_remove req_no_remove;
       oltpim::request_get req_oo_get;
+      pim_static_limit_callback<15, true> c_ol;
       tbl_new_order(warehouse_id)->pim_RemoveRecordBegin(txn, 
         tpcc_key64::new_order(new_order::key(warehouse_id, d, no_o_id)), &req_no_remove);
       tbl_oorder(warehouse_id)->pim_GetRecordBegin(txn, 
@@ -1815,42 +1815,45 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery_multiget(ermia::transac
       }
       rc_t _rc = co_await tbl_new_order(warehouse_id)->pim_RemoveRecordEnd(txn, &req_no_remove);
       if (_rc._val != RC_TRUE) rc = _rc;
-      _rc = co_await tbl_oorder(warehouse_id)->pim_GetRecordEnd(txn, valptr, &req_oo_get);
+      _rc = co_await tbl_oorder(warehouse_id)->pim_GetRecordEnd(txn, oo_value, &req_oo_get);
       if (_rc._val != RC_TRUE) rc = _rc;
-      else Decode(valptr, v_oo);
       _rc = co_await tbl_order_line(warehouse_id)->pim_ScanEnd(txn, c_ol, 1);
       if (_rc._val != RC_TRUE) rc = _rc;
+      else c_ol_values.swap(c_ol.values);
       TryCatchOltpim(rc);
     }
     // C.get, O.update, OL.update
-    customer::value v_c;
+    ermia::varstr c_value;
+    uint32_t o_c_id = 0;
     float ol_total = 0.0;
     {
       oltpim::request_get req_c_get;
       oltpim::request_update req_oo_update;
       oltpim::request_update reqs_ol_update[15];
+      oorder::value v_oo;
+      Decode(oo_value, v_oo);
+      o_c_id = v_oo.o_c_id;
       tbl_customer(warehouse_id)->pim_GetRecordBegin(txn, 
-        tpcc_key64::customer(customer::key(warehouse_id, d, v_oo.o_c_id)), &req_c_get);
+        tpcc_key64::customer(customer::key(warehouse_id, d, o_c_id)), &req_c_get);
       v_oo.o_carrier_id = o_carrier_id;
       tbl_oorder(warehouse_id)->pim_UpdateRecordBegin(txn, 
         tpcc_key64::oorder(oorder::key(warehouse_id, d, no_o_id)), 
         Encode(str(arenas[idx], Size(v_oo)), v_oo), &req_oo_update);
-      for (uint32_t i = 0; i < c_ol.size(); ++i) {
+      for (uint32_t i = 0; i < c_ol_values.size(); ++i) {
         order_line::value v_ol;
-        Decode(c_ol.values[i], v_ol);
+        Decode(c_ol_values[i], v_ol);
         ol_total += v_ol.ol_amount;
         v_ol.ol_delivery_d = ts;
         tbl_order_line(warehouse_id)->pim_UpdateRecordBegin(txn, 
           tpcc_key64::order_line(order_line::key(v_ol.ol_w_id, v_ol.ol_d_id, v_ol.ol_o_id, v_ol.ol_number)),
           Encode(str(arenas[idx], Size(v_ol)), v_ol), &reqs_ol_update[i]);
       }
-      rc_t _rc = co_await tbl_customer(warehouse_id)->pim_GetRecordEnd(txn, valptr, &req_c_get);
+      rc_t _rc = co_await tbl_customer(warehouse_id)->pim_GetRecordEnd(txn, c_value, &req_c_get);
       ALWAYS_ASSERT(_rc._val == RC_TRUE || _rc.IsAbort());
       if (_rc._val != RC_TRUE) rc = _rc;
-      else Decode(valptr, v_c);
       _rc = co_await tbl_oorder(warehouse_id)->pim_UpdateRecordEnd(txn, &req_oo_update);
       if (_rc._val != RC_TRUE) rc = _rc;
-      for (uint32_t i = 0; i < c_ol.size(); ++i) {
+      for (uint32_t i = 0; i < c_ol_values.size(); ++i) {
         _rc = co_await tbl_order_line(warehouse_id)->pim_UpdateRecordEnd(txn, &reqs_ol_update[i]);
         if (_rc._val != RC_TRUE) rc = _rc;
       }
@@ -1858,9 +1861,11 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_delivery_multiget(ermia::transac
     }
     // C.update
     {
+      customer::value v_c;
+      Decode(c_value, v_c);
       v_c.c_balance += ol_total;
       rc = co_await tbl_customer(warehouse_id)->pim_UpdateRecord(txn, 
-        tpcc_key64::customer(customer::key(warehouse_id, d, v_oo.o_c_id)),
+        tpcc_key64::customer(customer::key(warehouse_id, d, o_c_id)),
         Encode(str(arenas[idx], Size(v_c)), v_c));
       TryCatchOltpim(rc);
     }

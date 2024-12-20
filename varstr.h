@@ -95,7 +95,6 @@ struct varstr {
   }
 
   uint64_t l;
-  fat_ptr ptr;
   const uint8_t *p;  // must be the last field
 };
 }  // namespace ermia
