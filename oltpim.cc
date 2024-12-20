@@ -404,7 +404,6 @@ ConcurrentMasstreeIndex::pim_RemoveRecord(transaction *t, const uint64_t key) {
 void
 ConcurrentMasstreeIndex::pim_ScanBegin(transaction *t, const uint64_t start_key, const uint64_t end_key,
               pim::PIMScanCallback &callback, uint32_t max_keys_per_interval) {
-  ALWAYS_ASSERT(IsPrimary());
   auto *xc = t->xc;
   rc_t rc;
   ASSERT(max_keys_per_interval <= callback.max_outs_per_interval() * callback.num_intervals());
@@ -436,7 +435,8 @@ ConcurrentMasstreeIndex::pim_ScanBegin(transaction *t, const uint64_t start_key,
 }
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_ScanEnd(transaction *t, pim::PIMScanCallback &callback) {
+ConcurrentMasstreeIndex::pim_ScanEnd(transaction *t, pim::PIMScanCallback &callback,
+    uint32_t max_key_per_interval) {
   uint8_t *scan_req = (uint8_t*)callback.scan_req_storage();
   const size_t scan_req_size = callback.scan_req_storage_size();
   int cnt = callback.storeval;
@@ -456,67 +456,11 @@ ConcurrentMasstreeIndex::pim_ScanEnd(transaction *t, pim::PIMScanCallback &callb
       co_return {rc};
     }
   }
-  for (int i = 0; i < cnt; ++i) {
-    auto *req = (request_scan_base*)&scan_req[scan_req_size * i];
-    auto &rets = req->rets;
-    for (uint32_t j = 0; j < rets.base.outs; ++j) {
-      fat_ptr obj = {rets.values[j]};
-      auto *tuple = (dbtuple*)((Object*)obj.offset())->GetPayload();
-      varstr value(tuple->get_value_start(), tuple->size);
-      if (!callback.Invoke(value)) break;
-    }
-  }
-  co_return {RC_TRUE};
-}
 
-ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t start_key, const uint64_t end_key,
-                              pim::PIMScanCallback &callback, uint32_t max_keys_per_interval) {
-  auto *xc = t->xc;
-  rc_t rc;
-  ASSERT(max_keys_per_interval <= callback.max_outs_per_interval() * callback.num_intervals());
-  ASSERT(start_key <= end_key);
-  const uint64_t xid = (xc->owner._val) >> 16;
-  const uint64_t csn = xc->begin;
-
-  using request_scan_base = typename oltpim::request_scan<0>::t;
-  uint8_t *scan_req = (uint8_t*)callback.scan_req_storage();
-  const size_t scan_req_size = callback.scan_req_storage_size(); 
-  const int pim_id_end = pim_id_of(end_key);
-  int cnt = 0;
-  const uint64_t key_interval = (1UL << key_interval_bits);
-  for (
-      uint64_t begin_key = start_key & (~(key_interval - 1));
-      begin_key <= end_key; begin_key += key_interval, ++cnt) {
-    auto *req = (request_scan_base*)&scan_req[scan_req_size * cnt];
-    auto &args = req->args;
-    args.xid_s.max_outs = max_keys_per_interval;
-    args.xid_s.index_id = index_id;
-    args.xid_s.xid = xid;
-    args.keys[0] = std::max(begin_key, start_key);
-    args.keys[1] = std::min(begin_key + key_interval - 1, end_key);
-    args.csn = csn;
-    oltpim::engine::g_engine.push(pim_id_of(begin_key), req);
-  }
-  ASSERT(cnt <= callback.num_intervals());
-  for (int i = 0; i < cnt; ++i) {
-    auto *req = (request_scan_base*)&scan_req[scan_req_size * i];
-    while (!oltpim::engine::g_engine.is_done(req)) {
-      co_await std::suspend_always{};
-    }
-  }
-  for (int i = 0; i < cnt; ++i) {
-    auto *req = (request_scan_base*)&scan_req[scan_req_size * i];
-    auto status = req->rets.base.status;
-    CHECK_VALID_STATUS(status);
-    if (status != STATUS_SUCCESS) {
-      uint16_t rc = (status == STATUS_FAILED) ? RC_FALSE : RC_ABORT_SI_CONFLICT;
-      co_return {rc};
-    }
-  }
-
-  if (!IsPrimary()) { // Secondary
-    // Query again
+  if (!IsPrimary()) { // Secondary: query again
+    auto *xc = t->xc;
+    const uint64_t xid = (xc->owner._val) >> 16;
+    const uint64_t csn = xc->begin;
     const uint8_t primary_index_id = ((ConcurrentMasstreeIndex*)table_descriptor->GetPrimaryIndex())->index_id;
     auto *get_reqs = (oltpim::request_get*)callback.get_req_storage();
     int cnt2 = 0;
@@ -536,28 +480,9 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t start_key, cons
       }
     }
     ASSERT(cnt2 <= max_keys_per_interval * cnt);
-    for (int i = 0; i < cnt2; ++i) {
-      while (!oltpim::engine::g_engine.is_done(&get_reqs[i])) {
-        co_await std::suspend_always{};
-      }
-    }
-    for (int i = 0; i < cnt2; ++i) {
-      auto status = REQ_GET_STATUS(get_reqs[i].rets.value_status);
-      CHECK_VALID_STATUS(status);
-      if (status != STATUS_SUCCESS) {
-        uint16_t rc = (status == STATUS_FAILED) ? RC_FALSE : RC_ABORT_SI_CONFLICT;
-        co_return {rc};
-      }
-    }
-    for (int i = 0; i < cnt2; ++i) {
-      fat_ptr obj = {get_reqs[i].rets.value_status};
-      auto *tuple = (dbtuple*)((Object*)obj.offset())->GetPayload();
-      varstr value(tuple->get_value_start(), tuple->size);
-      if (!callback.Invoke(value)) break;
-    }
-    co_return {RC_TRUE};
+    callback.storeval = cnt2;
   }
-  else { // Primary
+  else { // Primary: ends here
     for (int i = 0; i < cnt; ++i) {
       auto *req = (request_scan_base*)&scan_req[scan_req_size * i];
       auto &rets = req->rets;
@@ -568,8 +493,47 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t start_key, cons
         if (!callback.Invoke(value)) break;
       }
     }
-    co_return {RC_TRUE};
   }
+  co_return {RC_TRUE};
+}
+
+ermia::coro::task<rc_t>
+ConcurrentMasstreeIndex::pim_ScanEndSecondary(transaction *t, pim::PIMScanCallback &callback) {
+  ALWAYS_ASSERT(!IsPrimary());
+  int cnt2 = callback.storeval;
+  auto *get_reqs = (oltpim::request_get*)callback.get_req_storage();
+  for (int i = 0; i < cnt2; ++i) {
+    while (!oltpim::engine::g_engine.is_done(&get_reqs[i])) {
+      co_await std::suspend_always{};
+    }
+  }
+  for (int i = 0; i < cnt2; ++i) {
+    auto status = REQ_GET_STATUS(get_reqs[i].rets.value_status);
+    CHECK_VALID_STATUS(status);
+    if (status != STATUS_SUCCESS) {
+      uint16_t rc = (status == STATUS_FAILED) ? RC_FALSE : RC_ABORT_SI_CONFLICT;
+      co_return {rc};
+    }
+  }
+  for (int i = 0; i < cnt2; ++i) {
+    fat_ptr obj = {get_reqs[i].rets.value_status};
+    auto *tuple = (dbtuple*)((Object*)obj.offset())->GetPayload();
+    varstr value(tuple->get_value_start(), tuple->size);
+    if (!callback.Invoke(value)) break;
+  }
+  co_return {RC_TRUE};
+}
+
+ermia::coro::task<rc_t>
+ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t start_key, const uint64_t end_key,
+                              pim::PIMScanCallback &callback, uint32_t max_keys_per_interval) {
+  pim_ScanBegin(t, start_key, end_key, callback, max_keys_per_interval);
+  auto rc = co_await pim_ScanEnd(t, callback, max_keys_per_interval);
+  if (rc._val != RC_TRUE) co_return rc;
+  if (!IsPrimary()) {
+    rc = co_await pim_ScanEndSecondary(t, callback);
+  }
+  co_return rc;
 }
 
 }

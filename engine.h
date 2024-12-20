@@ -253,7 +253,9 @@ public:
   ermia::coro::task<rc_t> pim_InsertOIDEnd(transaction *t, void *req);
   void pim_ScanBegin(transaction *t, const uint64_t start_key, const uint64_t end_key,
                      pim::PIMScanCallback &callback, uint32_t max_keys_per_interval);
-  ermia::coro::task<rc_t> pim_ScanEnd(transaction *t, pim::PIMScanCallback &callback);
+  ermia::coro::task<rc_t> pim_ScanEnd(transaction *t, pim::PIMScanCallback &callback,
+                     uint32_t max_key_per_interval);
+  ermia::coro::task<rc_t> pim_ScanEndSecondary(transaction *t, pim::PIMScanCallback &callback);
 
 #endif
 
