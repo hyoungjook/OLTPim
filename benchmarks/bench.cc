@@ -287,11 +287,18 @@ void bench_runner::start_measurement() {
     }
   }
   pid_t energy_perf_pid;
+  int energy_perf_pipefd[2];
   if (ermia::config::measure_energy) {
+    if (pipe(energy_perf_pipefd) != 0) {
+      perror("pipe"); exit(1);
+    }
     energy_perf_pid = fork();
     if (energy_perf_pid == 0) {
+      close(energy_perf_pipefd[0]);
+      dup2(energy_perf_pipefd[1], STDERR_FILENO);
       exit(execl("/usr/bin/perf", "perf", "stat", "-a", "-e", "power/energy-pkg/,power/energy-ram/", nullptr));
     }
+    close(energy_perf_pipefd[1]);
   }
 
   barrier_a.wait_for();  // wait for all threads to start up
@@ -528,6 +535,29 @@ void bench_runner::start_measurement() {
     }
   }
 
+  double energy_pkg = 0, energy_ram = 0;
+  double energy_power = 0, txn_per_joule = 0;
+  if (ermia::config::measure_energy) {
+    FILE *eng_f = fdopen(energy_perf_pipefd[0], "r");
+    char *tok_buf;
+    std::vector<std::string> tokens;
+    while (fscanf(eng_f, "%ms", &tok_buf) != EOF) {
+      tokens.emplace_back(tok_buf);
+      free(tok_buf);
+    }
+    fclose(eng_f);
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      if (tokens[i] == "power/energy-pkg/") {
+        energy_pkg = std::stod(tokens[i - 2]);
+      }
+      if (tokens[i] == "power/energy-ram/") {
+        energy_ram = std::stod(tokens[i - 2]);
+      }
+    }
+    energy_power = (energy_pkg + energy_ram) / elapsed_sec;
+    txn_per_joule = agg_throughput / energy_power;
+  }
+
   uint64_t llc_miss_ld = 0, llc_miss_st = 0;
   double llc_miss_per_txn = 0;
   if (ermia::config::measure_llc_miss) {
@@ -572,13 +602,19 @@ void bench_runner::start_measurement() {
   std::cout << "---------------------------------------\n";
   std::cout
        << agg_throughput << " txns/s, "
-       << p99_latency_ms << " latency.p99(ms), "
-       << elapsed_sec << " total_time(sec), ";
+       << p99_latency_ms << " latency.p99(ms), ";
+  if (ermia::config::measure_energy) {
+    std::cout << energy_pkg << " energy-pkg(J), "
+          << energy_ram << " energy-ram(J), "
+          << energy_power << " system-power(W), "
+          << txn_per_joule << " txns/J, ";
+  }
   if (ermia::config::measure_llc_miss) {
     std::cout << llc_miss_ld << " llc-load-misses, "
           << llc_miss_st << " llc-store-misses, "
           << llc_miss_per_txn << " llc-misses-per-txn ";
   }
+  std::cout << elapsed_sec << " total_time(sec)";
   std::cout << std::endl;
   std::cout << "---------------------------------------\n";
   std::cout << agg_abort_rate << " total_aborts/s, " << agg_system_abort_rate
