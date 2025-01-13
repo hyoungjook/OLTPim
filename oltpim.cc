@@ -56,6 +56,17 @@ void ConcurrentMasstreeIndex::assign_index_id() {
   ++g_concurrent_masstree_index_id;
 }
 
+static void
+pim_gc_tuple_chain(uint64_t gc_begin, uint16_t gc_num) {
+  fat_ptr obj_ptr{gc_begin};
+  for (uint16_t i = 0; i < gc_num; ++i) {
+    auto *obj = (Object*)obj_ptr.offset();
+    fat_ptr next_ptr = obj->GetNextPersistent();
+    MM::deallocate(obj_ptr);
+    obj_ptr = next_ptr;
+  }
+}
+
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
 void
 ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t key, void *req_) {
@@ -218,6 +229,7 @@ ConcurrentMasstreeIndex::pim_InsertRecordEnd(transaction *t, void *req_, uint64_
   dbtuple *tuple = (dbtuple*)((Object*)new_obj.offset())->GetPayload();
   int pim_id = pim_id_of(req->args.key);
   t->add_to_pim_write_set(new_obj, index_id, pim_id, rets.oid, tuple->size, true);
+  if (ermia::config::enable_gc) pim_gc_tuple_chain(rets.gc_begin, rets.gc_num);
   if (oid) *oid = SVALUE_MAKE(pim_id, rets.oid);
   co_return {RC_TRUE};
 }
@@ -346,10 +358,12 @@ ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_) {
     rc_t rc = (status == STATUS_FAILED) ? rc_t{RC_FALSE} : rc_t{RC_ABORT_SI_CONFLICT};
     co_return rc;
   }
-  // TODO manipulate new_value using old_value
-  dbtuple *tuple = (dbtuple*)((Object*)new_obj.offset())->GetPayload();
+  auto *obj = (Object*)new_obj.offset();
+  obj->SetNextPersistent(fat_ptr{rets.old_value}); // connect tuple chain
+  auto *tuple = (dbtuple*)obj->GetPayload();
   int pim_id = pim_id_of(req->args.key);
   t->add_to_pim_write_set(new_obj, index_id, pim_id, rets.oid, tuple->size, false);
+  if (ermia::config::enable_gc) pim_gc_tuple_chain(rets.gc_begin, rets.gc_num);
   co_return {RC_TRUE};
 }
 
@@ -390,6 +404,7 @@ ConcurrentMasstreeIndex::pim_RemoveRecordEnd(transaction *t, void *req_) {
   }
   int pim_id = pim_id_of(req->args.key);
   t->add_to_pim_write_set(NULL_PTR, index_id, pim_id, rets.oid, 0, false);
+  if (ermia::config::enable_gc) pim_gc_tuple_chain(rets.gc_begin, rets.gc_num);
   co_return {RC_TRUE};
 }
 
@@ -479,7 +494,7 @@ ConcurrentMasstreeIndex::pim_ScanEnd(transaction *t, pim::PIMScanCallback &callb
         ++cnt2;
       }
     }
-    ASSERT(cnt2 <= max_keys_per_interval * cnt);
+    ASSERT(cnt2 <= max_key_per_interval * cnt);
     callback.storeval = cnt2;
   }
   else { // Primary: ends here
