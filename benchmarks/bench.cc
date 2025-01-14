@@ -357,6 +357,9 @@ void bench_runner::start_measurement() {
     return percent;
   };
 
+#if defined(OLTPIM)
+  oltpim::engine::g_engine.start_measurement();
+#endif
   util::timer t, t_nosync;
   in_process_perf.start();
   barrier_b.count_down();  // bombs away!
@@ -535,8 +538,8 @@ void bench_runner::start_measurement() {
     }
   }
 
-  double energy_pkg = 0, energy_ram = 0;
-  double energy_power = 0, txn_per_joule = 0;
+  double power_cpu = 0, power_ram = 0;
+  double power_dpu = 0;
   if (ermia::config::measure_energy) {
     FILE *eng_f = fdopen(energy_perf_pipefd[0], "r");
     char *tok_buf;
@@ -546,16 +549,21 @@ void bench_runner::start_measurement() {
       free(tok_buf);
     }
     fclose(eng_f);
+    double energy_cpu = 0, energy_ram = 0;
     for (size_t i = 0; i < tokens.size(); ++i) {
       if (tokens[i] == "power/energy-pkg/") {
-        energy_pkg = std::stod(tokens[i - 2]);
+        energy_cpu = std::stod(tokens[i - 2]);
       }
       if (tokens[i] == "power/energy-ram/") {
         energy_ram = std::stod(tokens[i - 2]);
       }
     }
-    energy_power = (energy_pkg + energy_ram) / elapsed_sec;
-    txn_per_joule = agg_throughput / energy_power;
+    power_cpu = energy_cpu / elapsed_sec;
+    power_ram = energy_ram / elapsed_sec;
+
+#if defined(OLTPIM)
+    power_dpu = oltpim::engine::g_engine.compute_dpu_power(elapsed_sec);
+#endif
   }
 
   uint64_t llc_miss_ld = 0, llc_miss_st = 0;
@@ -604,10 +612,11 @@ void bench_runner::start_measurement() {
        << agg_throughput << " txns/s, "
        << p99_latency_ms << " latency.p99(ms), ";
   if (ermia::config::measure_energy) {
-    std::cout << energy_pkg << " energy-pkg(J), "
-          << energy_ram << " energy-ram(J), "
-          << energy_power << " system-power(W), "
-          << txn_per_joule << " txns/J, ";
+    std::cout << power_cpu << " power-cpu(W), "
+          << power_ram << " power-ram(W), ";
+#if defined(OLTPIM)
+    std::cout << power_dpu << " power-dpu(W), ";
+#endif
   }
   if (ermia::config::measure_llc_miss) {
     std::cout << llc_miss_ld << " llc-load-misses, "
