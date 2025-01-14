@@ -8,7 +8,6 @@
 
 #include "dbtest.h"
 #include "../dbcore/rcu.h"
-#include "perf.h"
 
 #if defined(SSI) && defined(SSN)
 #error "SSI + SSN?"
@@ -85,8 +84,8 @@ DEFINE_bool(enable_perf, false,
 DEFINE_string(perf_record_event, "", "Perf record event");
 DEFINE_bool(measure_energy, false,
             "Whether to measure energy consumption using linux perf.");
-DEFINE_bool(measure_llc_miss, false,
-            "Whether to measure LLC miss using linux perf.");
+DEFINE_bool(measure_imc_cnt, false,
+            "Whether to measure memory traffic using linux perf.");
 #if defined(SSN) || defined(SSI)
 DEFINE_bool(safesnap, false,
             "Whether to use the safe snapshot (for SSI and SSN only).");
@@ -171,7 +170,7 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
   ermia::config::enable_perf = FLAGS_enable_perf;
   ermia::config::perf_record_event = FLAGS_perf_record_event;
   ermia::config::measure_energy = FLAGS_measure_energy;
-  ermia::config::measure_llc_miss = FLAGS_measure_llc_miss;
+  ermia::config::measure_imc_cnt = FLAGS_measure_imc_cnt;
   ermia::config::physical_workers_only = FLAGS_physical_workers_only;
   ermia::config::physical_io_workers_only = FLAGS_physical_io_workers_only;
   if (ermia::config::physical_workers_only)
@@ -283,7 +282,6 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
 
   ermia::config::log_key_for_update = FLAGS_log_key_for_update;
 
-  ermia::perf::Initialize(); // should be called before thread::Initialize()
   ermia::thread::Initialize();
   ermia::config::init();
 
@@ -331,7 +329,7 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
             << std::endl;
   std::cerr << "  enable-perf       : " << ermia::config::enable_perf << std::endl;
   std::cerr << "  measure-energy    : " << ermia::config::measure_energy << std::endl;
-  std::cerr << "  measure-llc-miss    : " << ermia::config::measure_llc_miss << std::endl;
+  std::cerr << "  measure-llc-miss    : " << ermia::config::measure_imc_cnt << std::endl;
   std::cerr << "  pipelined commit  : " << ermia::config::pcommit << std::endl;
   std::cerr << "  dedicated pcommit thread: " << ermia::config::pcommit_thread
             << std::endl;

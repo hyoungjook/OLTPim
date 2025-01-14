@@ -12,7 +12,6 @@
 #include <sys/wait.h>
 
 #include "bench.h"
-#include "perf.h"
 
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-config.h"
@@ -24,17 +23,6 @@ volatile uint64_t committed_txn_count = 0;
 std::vector<bench_worker *> bench_runner::workers;
 
 thread_local ermia::epoch_num coroutine_batch_end_epoch = 0;
-
-static ermia::perf::InProcessPerf in_process_perf;
-namespace ermia::perf {
-void Initialize() {
-  // this should be done before thread::Initialize()
-  if (ermia::config::measure_llc_miss) {
-    in_process_perf.add_event(ermia::perf::PERF_EVENT_LLC_LOAD_MISSES);
-    in_process_perf.add_event(ermia::perf::PERF_EVENT_LLC_STORE_MISSES);
-  }
-}
-}
 
 void bench_worker::do_workload_function(uint32_t i) {
   ASSERT(workload.size());
@@ -300,6 +288,20 @@ void bench_runner::start_measurement() {
     }
     close(energy_perf_pipefd[1]);
   }
+  pid_t imc_perf_pid;
+  if (ermia::config::measure_imc_cnt) {
+    imc_perf_pid = fork();
+    if (imc_perf_pid == 0) {
+      exit(execl("/usr/bin/perf", "perf", "stat", "-a", "-e",
+        "uncore_imc_0/cas_count_read/,uncore_imc_0/cas_count_write/,"
+        "uncore_imc_1/cas_count_read/,uncore_imc_1/cas_count_write/,"
+        "uncore_imc_2/cas_count_read/,uncore_imc_2/cas_count_write/,"
+        "uncore_imc_3/cas_count_read/,uncore_imc_3/cas_count_write/,"
+        "uncore_imc_4/cas_count_read/,uncore_imc_4/cas_count_write/,"
+        "uncore_imc_5/cas_count_read/,uncore_imc_5/cas_count_write/",
+        nullptr));
+    }
+  }
 
   barrier_a.wait_for();  // wait for all threads to start up
   std::map<std::string, size_t> table_sizes_before;
@@ -361,7 +363,6 @@ void bench_runner::start_measurement() {
   oltpim::engine::g_engine.start_measurement();
 #endif
   util::timer t, t_nosync;
-  in_process_perf.start();
   barrier_b.count_down();  // bombs away!
 
   double total_util = 0;
@@ -414,7 +415,6 @@ void bench_runner::start_measurement() {
       gather_stats();
     }
 
-    in_process_perf.stop();
     running = false;
   } else {
     // Operation-based benchmark.
@@ -454,6 +454,10 @@ void bench_runner::start_measurement() {
   if (ermia::config::measure_energy) {
     kill(energy_perf_pid, SIGINT);
     waitpid(energy_perf_pid, nullptr, 0);
+  }
+  if (ermia::config::measure_imc_cnt) {
+    kill(imc_perf_pid, SIGINT);
+    waitpid(imc_perf_pid, nullptr, 0);
   }
   if (ermia::config::enable_perf) {
     std::cerr << "stop perf..." << std::endl;
@@ -566,14 +570,6 @@ void bench_runner::start_measurement() {
 #endif
   }
 
-  uint64_t llc_miss_ld = 0, llc_miss_st = 0;
-  double llc_miss_per_txn = 0;
-  if (ermia::config::measure_llc_miss) {
-    llc_miss_ld = in_process_perf.measure(ermia::perf::PERF_EVENT_LLC_LOAD_MISSES);
-    llc_miss_st = in_process_perf.measure(ermia::perf::PERF_EVENT_LLC_STORE_MISSES);
-    llc_miss_per_txn = (double)(llc_miss_ld + llc_miss_st) / n_txns;
-  }
-
   //if (ermia::config::enable_chkpt) {
   //  delete ermia::chkptmgr;
   //}
@@ -617,11 +613,6 @@ void bench_runner::start_measurement() {
 #if defined(OLTPIM)
     std::cout << power_dpu << " power-dpu(W), ";
 #endif
-  }
-  if (ermia::config::measure_llc_miss) {
-    std::cout << llc_miss_ld << " llc-load-misses, "
-          << llc_miss_st << " llc-store-misses, "
-          << llc_miss_per_txn << " llc-misses-per-txn ";
   }
   std::cout << elapsed_sec << " total_time(sec)";
   std::cout << std::endl;
