@@ -27,7 +27,7 @@ void finalize_index_setup() {
     .num_ranks_per_numa_node = (int)FLAGS_oltpim_num_ranks_per_numa_node,
     .alloc_fn = ermia::config::tls_alloc ? ermia::MM::allocate_onnode : nullptr,
     .enable_gc = (ermia::config::enable_gc != 0),
-    .sample_core_dump = (ermia::config::measure_energy != 0)
+    .enable_measure_energy = (ermia::config::measure_energy != 0)
   };
   oltpim::engine::g_engine.init(config);
   uint32_t num_pims = oltpim::engine::g_engine.num_pims();
