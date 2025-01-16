@@ -20,7 +20,7 @@
 namespace ermia {
 
 typedef uint32_t OID;
-typedef uint32_t FID;
+typedef uint16_t FID;
 
 static OID const INVALID_OID = ~uint32_t{0};
 

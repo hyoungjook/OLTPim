@@ -56,13 +56,13 @@ namespace ermia {
 // the entry pointer results a fat_ptr to the new object.
 struct write_record_t {
   fat_ptr *entry;
+  bool is_insert;
+  bool is_cold;
   FID fid;
   OID oid;
   uint64_t size;
-  bool is_insert;
-  bool is_cold;
   write_record_t(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert, bool cold)
-    : entry(entry), fid(fid), oid(oid), size(size), is_insert(insert), is_cold(cold) {}
+    : entry(entry), is_insert(insert), is_cold(cold), fid(fid), oid(oid), size(size) {}
   // Don't do anything on constructor here. It becomes bottleneck on large coro-batch-size.
   write_record_t() {}
   inline Object *get_object() { return (Object *)entry->offset(); }
