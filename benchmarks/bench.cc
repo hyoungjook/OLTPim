@@ -289,9 +289,15 @@ void bench_runner::start_measurement() {
     close(energy_perf_pipefd[1]);
   }
   pid_t imc_perf_pid;
-  if (ermia::config::measure_imc_cnt) {
+  int imc_perf_pipefd[2];
+  if (ermia::config::measure_mem_traffic) {
+    if (pipe(imc_perf_pipefd) != 0) {
+      perror("pipe"); exit(1);
+    }
     imc_perf_pid = fork();
     if (imc_perf_pid == 0) {
+      close(imc_perf_pipefd[0]);
+      dup2(imc_perf_pipefd[1], STDERR_FILENO);
       exit(execl("/usr/bin/perf", "perf", "stat", "-a", "-e",
         "uncore_imc_0/cas_count_read/,uncore_imc_0/cas_count_write/,"
         "uncore_imc_1/cas_count_read/,uncore_imc_1/cas_count_write/,"
@@ -301,6 +307,7 @@ void bench_runner::start_measurement() {
         "uncore_imc_5/cas_count_read/,uncore_imc_5/cas_count_write/",
         nullptr));
     }
+    close(imc_perf_pipefd[1]);
   }
 
   barrier_a.wait_for();  // wait for all threads to start up
@@ -455,7 +462,7 @@ void bench_runner::start_measurement() {
     kill(energy_perf_pid, SIGINT);
     waitpid(energy_perf_pid, nullptr, 0);
   }
-  if (ermia::config::measure_imc_cnt) {
+  if (ermia::config::measure_mem_traffic) {
     kill(imc_perf_pid, SIGINT);
     waitpid(imc_perf_pid, nullptr, 0);
   }
@@ -570,6 +577,45 @@ void bench_runner::start_measurement() {
 #endif
   }
 
+  double dram_read_mibps = 0, dram_write_mibps = 0, pim_read_mibps = 0, pim_write_mibps = 0;
+  if (ermia::config::measure_mem_traffic) {
+    FILE *imc_f = fdopen(imc_perf_pipefd[0], "r");
+    char *tok_buf;
+    std::vector<std::string> tokens;
+    while (fscanf(imc_f, "%ms", &tok_buf) != EOF) {
+      tokens.emplace_back(tok_buf);
+      free(tok_buf);
+    }
+    fclose(imc_f);
+    // Change the code if the server's channel configuration changes
+    static constexpr size_t num_channels = 6;
+    double traffics[2*num_channels];
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      for (size_t chn = 0; chn < num_channels; ++chn) {
+        if (tokens[i] == std::string("uncore_imc_") + std::to_string(chn) + std::string("/cas_count_read/")) {
+          traffics[2 * chn + 0] = std::stod(tokens[i - 2]);
+        }
+        if (tokens[i] == std::string("uncore_imc_") + std::to_string(chn) + std::string("/cas_count_write/")) {
+          traffics[2 * chn + 1] = std::stod(tokens[i - 2]);
+        }
+      }
+    }
+    for (size_t chn = 0; chn < num_channels; ++chn) {
+      if (chn == 0 || chn == 3) { // DRAM channels
+        dram_read_mibps += traffics[2 * chn + 0];
+        dram_write_mibps += traffics[2 * chn + 1];
+      }
+      else { // PIM channels
+        pim_read_mibps += traffics[2 * chn + 0];
+        pim_write_mibps += traffics[2 * chn + 1];
+      }
+    }
+    dram_read_mibps /= elapsed_sec;
+    dram_write_mibps /= elapsed_sec;
+    pim_read_mibps /= elapsed_sec;
+    pim_write_mibps /= elapsed_sec;
+  }
+
   //if (ermia::config::enable_chkpt) {
   //  delete ermia::chkptmgr;
   //}
@@ -609,10 +655,14 @@ void bench_runner::start_measurement() {
        << p99_latency_ms << " latency.p99(ms), ";
   if (ermia::config::measure_energy) {
     std::cout << power_cpu << " power-cpu(W), "
-          << power_ram << " power-ram(W), ";
-#if defined(OLTPIM)
-    std::cout << power_dpu << " power-dpu(W), ";
-#endif
+          << power_ram << " power-ram(W), "
+          << power_dpu << " power-pim(W), ";
+  }
+  if (ermia::config::measure_mem_traffic) {
+    std::cout << dram_read_mibps << " dram-read(MiB/s), "
+      << dram_write_mibps << " dram-write(MiB/s), "
+      << pim_read_mibps << " pim-read(MiB/s), "
+      << pim_write_mibps << " pim-write(MiB/s), ";
   }
   std::cout << elapsed_sec << " total_time(sec)";
   std::cout << std::endl;

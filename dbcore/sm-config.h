@@ -42,7 +42,7 @@ extern uint32_t arena_size_mb;
 extern bool enable_perf;
 extern std::string perf_record_event;
 extern bool measure_energy;
-extern bool measure_imc_cnt;
+extern bool measure_mem_traffic;
 extern uint32_t replay_threads;
 extern bool kStateRunning;
 extern bool iouring_read_log;
