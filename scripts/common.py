@@ -37,12 +37,10 @@ def create_result_file(args, exp_name):
         os.makedirs(result_dir)
     args.result_file = result_file_path(args, exp_name)
 
-def get_executable():
-    return str(Path(__file__).parent / 'evaluate.py')
-
 def print_header(args):
+    runner = str(Path(__file__).parent / 'evaluate.py')
     cmd = [
-        'python3', get_executable(),
+        'python3', runner,
         '--result-file', args.result_file,
         '--print-header'
     ]
@@ -50,9 +48,11 @@ def print_header(args):
 
 def run(args, system, workload, workload_size,
         coro_batch_size=None, no_logging=False, no_hyperthreading=False,
-        no_numa_local_workload=False, no_gc=False):
+        no_numa_local_workload=False, no_gc=False, no_interleave=False,
+        executable_suffix=None):
+    runner = str(Path(__file__).parent / 'evaluate.py')
     cmd = [
-        'python3', get_executable(),
+        'python3', runner,
         '--build-dir', args.build_dir,
         '--log-dir', args.log_dir,
         '--hugetlb-size-gb', str(args.hugetlb_size_gb),
@@ -73,4 +73,8 @@ def run(args, system, workload, workload_size,
         cmd += ['--no-numa-local-workload']
     if no_gc:
         cmd += ['--no-gc']
+    if no_interleave:
+        cmd += ['--no-interleave']
+    if executable_suffix:
+        cmd += ['--executable-suffix', executable_suffix]
     subprocess.run(cmd)

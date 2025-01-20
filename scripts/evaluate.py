@@ -40,6 +40,10 @@ def parse_args():
         help='Disable NUMA-local workload.')
     parser.add_argument('--no-gc', action='store_false', dest='gc',
         help='Disable garbage collection.')
+    parser.add_argument('--no-interleave', action='store_false', dest='interleave',
+        help='Disable PIM-CPU interleaving.')
+    parser.add_argument('--executable-suffix', type=str, default=None,
+        help='Suffix to executable.')
     parser.add_argument('--num-upmem-ranks', type=int, default=None,
         help='Total number of UPMEM ranks. Used if system="OLTPim".')
     args = parser.parse_args()
@@ -185,10 +189,12 @@ def oltpim_options(args):
     if 'TPC-C' in args.workload:
         if args.workload_size < args.threads * args.coro_batch_size:
             args.coro_batch_size = args.workload_size // args.threads
+    interleave = 1 if args.interleave else 0
     opts = [
         f'-coro_batch_size={args.coro_batch_size}',
         '-coro_scheduler=1',
-        f'-oltpim_num_ranks_per_numa_node={num_ranks_per_numa}'
+        f'-oltpim_num_ranks_per_numa_node={num_ranks_per_numa}',
+        f'-oltpim_interleave={interleave}'
     ]
     return opts
 
@@ -201,6 +207,8 @@ def evaluate(args):
             executable_suffix = 'oltpim'
         case _:
             raise ValueError(f'Invalid system={args.system}')
+    if args.executable_suffix:
+        executable_suffix = f'{executable_suffix}{args.executable_suffix}'
     if 'YCSB' in args.workload:
         executable = executable / 'ycsb' / f'ycsb_SI_{executable_suffix}'
     elif 'TPC-C' in args.workload:
@@ -254,7 +262,7 @@ def parse_result(result):
     return values_dict
 
 def print_header():
-    csv_header = 'system,workload,workload_size,corobatchsize,log,HT,NUMALocal,GC,' + \
+    csv_header = 'system,suffix,workload,workload_size,corobatchsize,log,HT,NUMALocal,GC,Interleave,' + \
         'tput(TPS),p99(ms),Pcpu(W),Pdram(W),Ppim(W),' + \
         'BWdram.rd(MiB/s),BWdram.wr(MiB/s),BWpim.rd(MiB/s),BWpim.wr(MiB/s),' + \
         'time(s)\n'
@@ -262,9 +270,9 @@ def print_header():
         f.write(csv_header)
 
 def print_result(args, values):
-    csv = f"{args.system},{args.workload},{args.workload_size}," + \
+    csv = f"{args.system},{args.executable_suffix},{args.workload},{args.workload_size}," + \
         f"{args.coro_batch_size},{args.logging},{args.hyperthreading},{args.numa_local_workload}," + \
-        f"{args.gc}," + \
+        f"{args.gc},{args.interleave}," + \
         f"{values['txns/s']},{values['latency.p99(ms)']}," + \
         f"{values['power-cpu(W)']},{values['power-ram(W)']},{values['power-pim(W)']}," + \
         f"{values['dram-read(MiB/s)']},{values['dram-write(MiB/s)']}," + \

@@ -29,6 +29,10 @@ endif()
 set(LINK_FLAGS "-lc++abi -lnuma -lpthread -pthread -lrt -lglog -lgflags -luring")
 link_libraries(${LINK_FLAGS})
 
+if(NOT DEFINED NO_UPMEM)
+set(NO_UPMEM 0)
+endif()
+
 # Store shared libraries under /lib
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -70,7 +74,9 @@ add_subdirectory(benchmarks/ycsb)
 add_subdirectory(benchmarks/tpcc)
 add_subdirectory(dbcore)
 add_subdirectory(masstree)
+if(NOT NO_UPMEM)
 add_subdirectory(oltpim-engine)
+endif()
 
 set_property(GLOBAL APPEND PROPERTY ALL_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/engine.cc
@@ -114,9 +120,23 @@ add_library(corobase_flat_coro_si STATIC ${LIB_SRC})
 set_target_properties(corobase_flat_coro_si PROPERTIES COMPILE_FLAGS "")
 
 # SI with oltpim
+if(NOT NO_UPMEM)
 add_library(corobase_oltpim_si STATIC ${LIB_SRC})
 set_target_properties(corobase_oltpim_si PROPERTIES COMPILE_FLAGS "-DOLTPIM")
 target_link_libraries(corobase_oltpim_si oltpim)
+
+add_library(corobase_oltpim_si_nodirect STATIC ${LIB_SRC})
+set_target_properties(corobase_oltpim_si_nodirect PROPERTIES COMPILE_FLAGS "-DOLTPIM")
+target_link_libraries(corobase_oltpim_si_nodirect oltpim_nodirect)
+
+add_library(corobase_oltpim_si_indexonly STATIC ${LIB_SRC})
+set_target_properties(corobase_oltpim_si_indexonly PROPERTIES COMPILE_FLAGS "-DOLTPIM -DOLTPIM_OFFLOAD_INDEX_ONLY")
+target_link_libraries(corobase_oltpim_si_indexonly oltpim)
+
+add_library(corobase_oltpim_si_indexonly_nodirect STATIC ${LIB_SRC})
+set_target_properties(corobase_oltpim_si_indexonly_nodirect PROPERTIES COMPILE_FLAGS "-DOLTPIM -DOLTPIM_OFFLOAD_INDEX_ONLY")
+target_link_libraries(corobase_oltpim_si_indexonly_nodirect oltpim_nodirect)
+endif()
 
 # Thread pool library with SSN enabled
 #add_library(thread_pool_ssn SHARED ${THREAD_POOL_SRC})
