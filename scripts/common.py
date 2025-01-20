@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import os
 from pathlib import Path
 import subprocess
@@ -11,7 +10,7 @@ def parse_args():
         help='Path of the program build directory.')
     parser.add_argument('--log-dir', type=str, default='/scratch/log',
         help='Path of the logging directory.')
-    parser.add_argument('--hugetlb-size-gb', type=int, default=140,
+    parser.add_argument('--hugetlb-size-gb', type=int, default=160,
         help='Size (GiB) of hugeTLB page to pre-allocate.')
     parser.add_argument('--result-dir', type=str, required=True,
         help='Path of directory in which the CSV result file will be stored.')
@@ -19,16 +18,24 @@ def parse_args():
         help='Seconds to run each benchmark.')
     parser.add_argument('--num-upmem-ranks', type=int, required=True,
         help='Total number of UPMEM ranks. Used if system="OLTPim".')
-    return parser.parse_args()
+    parser.add_argument('--skip-measure', action='store_false', dest='measure',
+        help='Skip measurement and plot graph with latest result')
+    args = parser.parse_args()
+    return args
 
-def create_result_file(args, prefix):
+def result_file_path(args, exp_name):
+    file_name = f'exp_{exp_name}'
+    return str(Path(args.result_dir) / file_name)
+
+def result_plot_path(args, exp_name, suffix=''):
+    file_name = f'plot_{exp_name}{suffix}.pdf'
+    return str(Path(args.result_dir) / file_name)
+
+def create_result_file(args, exp_name):
     result_dir = args.result_dir
     if not os.path.isdir(result_dir):
         os.makedirs(result_dir)
-    now = datetime.datetime.now()
-    now = str(now).replace(' ', '-')
-    file_name = f'exp_{prefix}_{args.hugetlb_size_gb}GiB_{args.bench_seconds}s_{now}'
-    args.result_file = Path(result_dir) / file_name
+    args.result_file = result_file_path(args, exp_name)
 
 def get_executable():
     return str(Path(__file__).parent / 'evaluate.py')
@@ -43,7 +50,7 @@ def print_header(args):
 
 def run(args, system, workload, workload_size,
         coro_batch_size=None, no_logging=False, no_hyperthreading=False,
-        no_numa_local_workload=False):
+        no_numa_local_workload=False, no_gc=False):
     cmd = [
         'python3', get_executable(),
         '--build-dir', args.build_dir,
@@ -64,4 +71,6 @@ def run(args, system, workload, workload_size,
         cmd += ['--no-hyperthreading']
     if no_numa_local_workload:
         cmd += ['--no-numa-local-workload']
+    if no_gc:
+        cmd += ['--no-gc']
     subprocess.run(cmd)

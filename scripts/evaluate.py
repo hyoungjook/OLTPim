@@ -38,6 +38,8 @@ def parse_args():
         help='Disable hyperthreading')
     parser.add_argument('--no-numa-local-workload', action='store_false', dest='numa_local_workload',
         help='Disable NUMA-local workload.')
+    parser.add_argument('--no-gc', action='store_false', dest='gc',
+        help='Disable garbage collection.')
     parser.add_argument('--num-upmem-ranks', type=int, default=None,
         help='Total number of UPMEM ranks. Used if system="OLTPim".')
     args = parser.parse_args()
@@ -100,13 +102,14 @@ def common_options(args):
     if not args.hyperthreading:
         args.threads = args.threads // 2 # Only physical cores
     physical_workers_only = 0 if args.hyperthreading else 1
+    enable_gc = 1 if args.gc else 0
     opts = [
         f'-node_memory_gb={args.hugetlb_size_gb_per_node}',
         f'-threads={args.threads}',
         f'-physical_workers_only={physical_workers_only}',
         f'-seconds={args.seconds}',
-        '-enable_gc=1',
-        '-arena-size_mb=1',
+        f'-enable_gc={enable_gc}',
+        '-arena_size_mb=1',
         '-measure_energy=1',
         '-measure_mem_traffic=1'
     ]
@@ -221,16 +224,13 @@ def evaluate(args):
     else:
         raise ValueError(f'Invalid system={args.system}')
 
-    result = subprocess.run(cmd, capture_output=True)
-    result_str = result.stdout.decode()
-
-    log_str = f'CMD: {cmd}\n\n' + \
-        f'STDOUT:\n{result_str}\n\n' + \
-        f'STDERR:\n{result.stderr.decode()}\n'
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as log:
-        log.write(log_str)
-        print(f'Result written to {log.name}')
-
+        log_file = log.name
+        print(f'Writing log to {log_file}')
+        log.write(f'CMD: {cmd}\n\n')
+        subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT)
+    with open(log_file, 'r') as f:
+        result_str = f.read()
     return result_str
 
 def parse_result(result):
@@ -254,7 +254,7 @@ def parse_result(result):
     return values_dict
 
 def print_header():
-    csv_header = 'system,workload,workload_size,corobatchsize,log,HT,NUMALocal,' + \
+    csv_header = 'system,workload,workload_size,corobatchsize,log,HT,NUMALocal,GC,' + \
         'tput(TPS),p99(ms),Pcpu(W),Pdram(W),Ppim(W),' + \
         'BWdram.rd(MiB/s),BWdram.wr(MiB/s),BWpim.rd(MiB/s),BWpim.wr(MiB/s),' + \
         'time(s)\n'
@@ -264,6 +264,7 @@ def print_header():
 def print_result(args, values):
     csv = f"{args.system},{args.workload},{args.workload_size}," + \
         f"{args.coro_batch_size},{args.logging},{args.hyperthreading},{args.numa_local_workload}," + \
+        f"{args.gc}," + \
         f"{values['txns/s']},{values['latency.p99(ms)']}," + \
         f"{values['power-cpu(W)']},{values['power-ram(W)']},{values['power-pim(W)']}," + \
         f"{values['dram-read(MiB/s)']},{values['dram-write(MiB/s)']}," + \
