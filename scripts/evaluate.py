@@ -236,7 +236,8 @@ def evaluate(args):
         log_file = log.name
         print(f'Writing log to {log_file}')
         log.write(f'CMD: {cmd}\n\n')
-        subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT)
+        ret = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT)
+        ret.check_returncode()
     with open(log_file, 'r') as f:
         result_str = f.read()
     return result_str

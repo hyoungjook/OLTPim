@@ -6,7 +6,7 @@ from matplotlib.ticker import FuncFormatter
 EXP_NAME = 'batchsize'
 SYSTEMS = ['MosaicDB', 'OLTPim']
 WORKLOADS = ['YCSB-C']
-WORKLOAD_SIZE = 10 ** 9
+WORKLOAD_SIZE = 10 ** 8
 CORO_BATCH_SIZES = [
     2, 4, 8, 16, 32, 64, 128, 256, 512, 1024
 ]
