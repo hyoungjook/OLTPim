@@ -60,7 +60,7 @@ def plot(args):
                     ycsba_nogc_p99[system] += [float(row['p99(ms)'])]
 
     # Readonly performance
-    fig, axes = plt.subplots(2, 2, figsize= (6, 6), constrained_layout=True)
+    fig, axes = plt.subplots(2, 2, figsize= (5.5, 4), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
     x_indices = range(len(ycsbc_size[MOSAICDB]))
     x_labels = [SIZE_TO_LABEL[ycsbc_size[MOSAICDB][x]] for x in x_indices]
@@ -86,8 +86,7 @@ def plot(args):
     axes[0][1].set_yscale('log')
     axes[0][1].yaxis.set_major_formatter(formatter)
     axes[0][1].minorticks_off()
-    axes[0][1].set_ymargin(0.2)
-    axes[0][1].legend(loc='upper center', ncol=2)
+    axes[0][1].legend(loc='center')
     bottoms = [0 for _ in x_indices]
     axes[1][0].bar(mosaic_indices, ycsbc_dramrd[MOSAICDB], width, bottom=bottoms, color='lightgreen', edgecolor='black', hatch='\\\\')
     bottoms = [b + n for b, n in zip(bottoms, ycsbc_dramrd[MOSAICDB])]
@@ -138,7 +137,7 @@ def plot(args):
     plt.close(fig)
 
     # Update
-    fig, axes = plt.subplots(2, 2, figsize= (6, 6), constrained_layout=True)
+    fig, axes = plt.subplots(2, 2, figsize= (5.5, 4), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
     x_indices = range(len(ycsba_size[MOSAICDB]))
     x_labels = [SIZE_TO_LABEL[ycsba_size[MOSAICDB][x]] for x in x_indices]
@@ -163,8 +162,7 @@ def plot(args):
     axes[0][1].set_yscale('log')
     axes[0][1].yaxis.set_major_formatter(formatter)
     axes[0][1].minorticks_off()
-    axes[0][1].set_ymargin(0.2)
-    axes[0][1].legend(loc='upper center', ncol=2)
+    axes[0][1].legend(loc='center')
     bottoms = [0 for _ in x_indices]
     axes[1][0].bar(mosaic_indices, ycsba_dramrd[MOSAICDB], width, bottom=bottoms, color='lightgreen', edgecolor='black', hatch='\\\\')
     bottoms = [b + n for b, n in zip(bottoms, ycsba_dramrd[MOSAICDB])]

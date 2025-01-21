@@ -9,52 +9,51 @@ WORKLOAD_SIZES = [10 ** 8]
 # (system, no_numa_local, no_interleave, suffix)
 BREAKDOWNS = [
     ('MosaicDB', True, False, None),
-    ('MosaicDB', False, False, None),
     ('OLTPim', True, True, '_indexonly_nodirect'),
     ('OLTPim', True, True, '_nodirect'),
     ('OLTPim', True, True, None),
     ('OLTPim', True, False, None),
+    ('MosaicDB', False, False, None),
+    ('OLTPim', False, True, '_indexonly_nodirect'),
+    ('OLTPim', False, True, '_nodirect'),
+    ('OLTPim', False, True, None),
     ('OLTPim', False, False, None),
 ]
 
-X_LABELS = [
-    'Default', 'NUMA Local\nWorkload',
-    'Offload\nIndex', 'Offload\nIndex & Ver', 'Direct\nPIM Access', 'CPU-PIM\nInterleave', 'NUMA Local\nWorkload'
-]
+X_LABELS = ['Baseline', 'Offload\nIndex', '+Offload\nVersions', '+Direct\nPIM Access', '+PIM CPU\nInterleave']
 
 def plot(args):
-    tputs = []
+    tputs = {False: [], True: []}
     with open(result_file_path(args, EXP_NAME), 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            tputs += [float(row['tput(TPS)']) / 1000000]
+            numa_local = row['NUMALocal'] == 'True'
+            tputs[numa_local] += [float(row['tput(TPS)']) / 1000000]
 
-    fig, ax = plt.subplots(figsize=(5, 3), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(5.5, 2), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
-    x_indices = range(len(tputs))
+    x_indices = range(len(tputs[False]))
     x_labels = X_LABELS
     suf = lambda i: f'{(tputs[i]/tputs[i-1]):.2f}x'
-    mosaic_indices = [0, 1]
-    mosaic_tputs = tputs[0:2]
-    mosaic_speedups = ['', suf(1)]
-    oltpim_indices = [2, 3, 4, 5, 6]
-    oltpim_tputs = tputs[2:7]
-    oltpim_speedups = ['', suf(3), suf(4), suf(5), suf(6)]
-    width = 0.3
-    rects1 = ax.bar(mosaic_indices, mosaic_tputs, width, color='white', edgecolor='black', hatch='\\\\', label='MosaicDB')
-    ax.bar_label(rects1, labels=mosaic_speedups, padding=3)
-    rects2 = ax.bar(oltpim_indices, oltpim_tputs, width, color='white', edgecolor='red', hatch='//', label='OLTPim')
-    ax.bar_label(rects2, labels=oltpim_speedups, padding=3)
+    width = 0.4
+    no_numa_indices = [x - width/2 for x in x_indices]
+    no_numa_speedups = ['' if i<=1 else f'{(tputs[False][i]/tputs[False][i-1]):.2f}x' for i in range(len(tputs[False]))]
+    numa_indices = [x + width/2 for x in x_indices]
+    numa_speedups = ['' if i<=1 else f'{(tputs[True][i]/tputs[True][i-1]):.2f}x' for i in range(len(tputs[True]))]
+    rects1 = ax.bar(no_numa_indices, tputs[False], width, color='white', edgecolor='green', hatch='xx', label='System-wide')
+    ax.bar_label(rects1, labels=no_numa_speedups, padding=3)
+    rects2 = ax.bar(numa_indices, tputs[True], width, color='white', edgecolor='blue', hatch='oo', label='NUMA-local Workload')
+    ax.bar_label(rects2, labels=numa_speedups, padding=3)
     ax.set_xticks(x_indices)
     ax.set_xticklabels(x_labels)
-    ax.tick_params(axis='x', which='major', labelsize=7)
     ax.set_xlabel('')
     ax.set_ylabel('Throughput (MTPS)')
-    ax.set_ylim(0, 10.5)
+    ax.set_ymargin(0.2)
+    ax.set_ylim(bottom=0)
     ax.yaxis.set_major_formatter(formatter)
     ax.minorticks_off()
     ax.set_xlim(-0.5, len(x_indices) - 0.5)
-    ax.legend(loc='upper left')
+    ax.legend(loc='upper left', ncol=2)
     plt.savefig(result_plot_path(args, EXP_NAME))
 
 if __name__ == "__main__":
