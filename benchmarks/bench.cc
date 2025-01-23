@@ -296,7 +296,7 @@ void bench_runner::start_measurement() {
       close(eng_perf_fds[1][0]);
       dup2(eng_perf_fds[1][1], STDERR_FILENO);
       exit(execl("/usr/bin/perf", "perf", "stat", "-a", "-e",
-        ermia::config::measure_energy_separate_pim ? (
+        ermia::config::measure_energy_on_upmem_server ? (
           // Hardcoded for upmemcloud9
           "uncore_imc_0/cas_count_read/,uncore_imc_0/cas_count_write/,"
           "uncore_imc_1/cas_count_read/,uncore_imc_1/cas_count_write/,"
@@ -326,7 +326,7 @@ void bench_runner::start_measurement() {
 
   // Print some results every second
   uint64_t slept = 0;
-  uint64_t last_us = 0;
+  uint64_t last_us = util::timer::cur_usec();
   uint64_t last_commits = 0, last_aborts = 0;
   uint64_t last_latency_numer_us = 0;
 
@@ -611,7 +611,7 @@ void bench_runner::start_measurement() {
     dram_rd_mibps = 0, dram_wr_mibps = 0;
     pim_rd_mibps = 0, pim_wr_mibps = 0;
     bool check_unit_correct = true;
-    if (ermia::config::measure_energy_separate_pim) {
+    if (ermia::config::measure_energy_on_upmem_server) {
       // Channel 0,3 are DRAM; 1,2,4,5 are PIM
       const bool is_chn_dram[6] = {true, false, false, true, false, false};
       for (int chn = 0; chn < 6; ++chn) {

@@ -24,6 +24,11 @@ X_LABELS = ['Baseline', 'Offload\nIndex', '+Offload\nVersions', '+Direct\nPIM Ac
 
 def plot(args):
     tputs = {False: [], True: []}
+    with open(result_file_path(args, EXP_NAME, MOSAICDB), 'r') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            numa_local = row['NUMALocal'] == 'True'
+            tputs[numa_local] += [float(row['tput(TPS)']) / 1000000]
     with open(result_file_path(args, EXP_NAME, OLTPIM), 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:

@@ -21,19 +21,22 @@ def parse_args():
         help='Seconds to run each benchmark.')
     parser.add_argument('--bench-threads', type=int, default=os.cpu_count(),
         help='Number of worker threads.')
-    parser.add_argument('--num-upmem-ranks', type=int, required=True,
+    parser.add_argument('--num-upmem-ranks', type=int, default=None,
         help='Total number of UPMEM ranks. Used if system="OLTPim".')
-    parser.add_argument('--systems', required=True, choices=[MOSAICDB, OLTPIM, 'both'],
+    parser.add_argument('--systems', default=None, choices=[MOSAICDB, OLTPIM, 'both'],
         help='Systems to evaluate. Choices: [MosaicDB, OLTPim, both]')
     parser.add_argument('--measure-on-upmem-server', action='store_true',
         help='Provide if measuring on UPMEM server.')
     parser.add_argument('--plot', action='store_true',
         help='Skip measurement and plot graph with latest result')
     args = parser.parse_args()
-    args.systems = {
-        MOSAICDB: (args.systems == 'MosaicDB' or args.systems == 'both'),
-        OLTPIM: (args.systems == 'OLTPim' or args.systems == 'both'),
-    }
+    if not args.plot:
+        if not args.systems:
+            parser.error('--systems is required unless running in --plot mode.')
+        args.systems = {
+            MOSAICDB: (args.systems == 'MosaicDB' or args.systems == 'both'),
+            OLTPIM: (args.systems == 'OLTPim' or args.systems == 'both'),
+        }
     return args
 
 def result_file_path(args, exp_name, system):
@@ -78,8 +81,9 @@ def run(args, system, workload, workload_size,
         '--workload-size', str(workload_size),
         '--seconds', str(args.bench_seconds),
         '--threads', str(args.bench_threads),
-        '--num-upmem-ranks', str(args.num_upmem_ranks)
     ]
+    if args.num_upmem_ranks:
+        cmd += ['--num-upmem-ranks', str(args.num_upmem_ranks)]
     if args.measure_on_upmem_server:
         cmd += ['--measure-on-upmem-server']
     if coro_batch_size:

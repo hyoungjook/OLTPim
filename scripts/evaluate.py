@@ -116,7 +116,7 @@ def common_options(args):
         '-measure_energy=1'
     ]
     if args.measure_on_upmem_server:
-        opts += ['-measure_energy_separate_pim=1']
+        opts += ['-measure_energy_on_upmem_server=1']
     return opts
 
 def log_options(args):
@@ -267,8 +267,8 @@ def print_header():
         'log,NUMALocal,GC,Interleave,' + \
         'tput(TPS),p99(ms),time(s),' + \
         'CPUUtil,CPUTurboUtil,' + \
-        'BWdram.rd(MiB/s),BWdram.wr(MiB/w),' + \
-        'BWpim.rd(MiB/s),BWpim.wr(MiB/w),' + \
+        'BWdram.rd(MiB/s),BWdram.wr(MiB/s),' + \
+        'BWpim.rd(MiB/s),BWpim.wr(MiB/s),' + \
         'PIMUtil,PIMmramratio,PIMmramsize(B)' + \
         '\n'
     with open(args.result_file, 'w') as f:
