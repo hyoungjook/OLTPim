@@ -176,6 +176,10 @@ def tpcc_options(args):
 def mosaicdb_options(args):
     if not args.coro_batch_size:
         args.coro_batch_size = 8
+    if 'TPC-C' in args.workload:
+        if args.workload_size < args.threads * args.coro_batch_size:
+            args.coro_batch_size = args.workload_size // args.threads
+            print(f'WARNING: coro_batch_size set to {args.coro_batch_size} to meet TPC-C requirement')
     opts = [
         f'-coro_batch_size={args.coro_batch_size}',
         '-coro_scheduler=0'
@@ -189,6 +193,7 @@ def oltpim_options(args):
     if 'TPC-C' in args.workload:
         if args.workload_size < args.threads * args.coro_batch_size:
             args.coro_batch_size = args.workload_size // args.threads
+            print(f'WARNING: coro_batch_size set to {args.coro_batch_size} to meet TPC-C requirement')
     interleave = 1 if args.interleave else 0
     opts = [
         f'-coro_batch_size={args.coro_batch_size}',
@@ -234,7 +239,7 @@ def evaluate(args):
 
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as log:
         log_file = log.name
-        print(f'Writing log to {log_file}')
+        print(f'Writing execution log to {log_file}')
         log.write(f'CMD: {cmd}\n\n')
         ret = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT)
         ret.check_returncode()

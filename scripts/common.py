@@ -98,4 +98,5 @@ def run(args, system, workload, workload_size,
         cmd += ['--no-interleave']
     if executable_suffix:
         cmd += ['--executable-suffix', executable_suffix]
-    subprocess.run(cmd)
+    ret = subprocess.run(cmd)
+    ret.check_returncode()

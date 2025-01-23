@@ -37,6 +37,8 @@ void wakeup_commit_daemon();
 
 void initialize();
 void uninitialize();
+bool log_enabled();
+void signal_measure_start();
 
 void set_record_latency(bool record);
 
@@ -190,7 +192,6 @@ public:
 };
 
 extern std::vector<tls_log *>tlogs;
-extern bool null_log_device;
 
 }  // namespace dlog
 

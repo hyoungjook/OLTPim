@@ -35,7 +35,7 @@ std::atomic<bool>pcommit_daemon_has_work(false);
 // If config::null_log_device, it's always true.
 // If (!config::null_log_device) && config::null_log_during_init,
 //    it's true during init and false during measurement.
-bool null_log_device;
+bool null_log;
 
 void flush_all() {
   // Flush rest blocks
@@ -75,12 +75,23 @@ void initialize() {
   if (ermia::config::pcommit_thread) {
     pcommit_thread = new std::thread(commit_daemon);
   }
+  null_log = (config::null_log_device || config::null_log_during_init);
 }
 
 void uninitialize() {
   if (ermia::config::pcommit_thread) {
     pcommit_thread->join();
     delete pcommit_thread;
+  }
+}
+
+bool log_enabled() {
+  return !null_log;
+}
+
+void signal_measure_start() {
+  if (!config::null_log_device && config::null_log_during_init) {
+    null_log = false;
   }
 }
 
@@ -131,7 +142,6 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
 
   // Initialize committer
   tcommitter.initialize(log_id);
-  dlog::null_log_device = (config::null_log_device || config::null_log_during_init);
 }
 
 void tls_log::uninitialize() {
@@ -241,7 +251,7 @@ bool tls_log::peek_only(void *user_data, uint32_t read_size) {
 }
 
 void tls_log::issue_flush(const char *buf, uint64_t size) {
-  if (dlog::null_log_device) {
+  if (dlog::null_log) {
     durable_lsn += size;
     return;
   }
@@ -269,7 +279,7 @@ void tls_log::issue_flush(const char *buf, uint64_t size) {
 }
 
 void tls_log::poll_flush() {
-  if(dlog::null_log_device) {
+  if(dlog::null_log) {
     return;
   }
 

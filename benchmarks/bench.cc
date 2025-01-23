@@ -213,7 +213,7 @@ void bench_runner::run() {
   if (ermia::config::pcommit) {
     ermia::dlog::dequeue_committed_xcts();
     // Sanity check to make sure all transactions are fully committed
-    if (!ermia::dlog::null_log_device) {
+    if (ermia::dlog::log_enabled()) {
       for (auto &tlog : ermia::dlog::tlogs) {
         LOG_IF(FATAL, tlog->get_commit_queue_size() > 0);
       }
@@ -221,9 +221,7 @@ void bench_runner::run() {
     // Enable latency recording
     ermia::dlog::set_record_latency(true);
   }
-  if (!ermia::config::null_log_device && ermia::config::null_log_during_init) {
-    ermia::dlog::null_log_device = false;
-  }
+  ermia::dlog::signal_measure_start();
 
   // if (ermia::config::enable_chkpt) {
   //  ermia::chkptmgr->do_chkpt();  // this is synchronous
