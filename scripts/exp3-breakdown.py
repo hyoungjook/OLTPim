@@ -24,7 +24,7 @@ X_LABELS = ['Baseline', 'Offload\nIndex', '+Offload\nVersions', '+Direct\nPIM Ac
 
 def plot(args):
     tputs = {False: [], True: []}
-    with open(result_file_path(args, EXP_NAME), 'r') as f:
+    with open(result_file_path(args, EXP_NAME, OLTPIM), 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
             numa_local = row['NUMALocal'] == 'True'
@@ -58,7 +58,7 @@ def plot(args):
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.measure:
+    if not args.plot:
         create_result_file(args, EXP_NAME)
         print_header(args)
         for workload in WORKLOADS:
@@ -68,4 +68,5 @@ if __name__ == "__main__":
                         no_numa_local_workload=no_numa_local,
                         no_interleave=no_interleave,
                         executable_suffix=suffix)
-    plot(args)
+    else:
+        plot(args)

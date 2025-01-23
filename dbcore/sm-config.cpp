@@ -54,7 +54,7 @@ bool print_cpu_util = false;
 bool enable_perf = false;
 std::string perf_record_event("");
 bool measure_energy = false;
-bool measure_mem_traffic = false;
+bool measure_energy_separate_pim = false;
 uint64_t node_memory_gb = 12;
 int recovery_warm_up_policy = WARM_UP_NONE;
 bool pcommit = false;

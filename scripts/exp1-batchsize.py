@@ -12,18 +12,17 @@ CORO_BATCH_SIZES = [
 ]
 
 def plot(args):
-    MOSAICDB = 'MosaicDB'
-    OLTPIM = 'OLTPim'
     batchsize = {MOSAICDB: [], OLTPIM: []}
     tput = {MOSAICDB: [], OLTPIM: []}
     p99 = {MOSAICDB: [], OLTPIM: []}
-    with open(result_file_path(args, EXP_NAME), 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            system = row['system']
-            batchsize[system] += [float(row['corobatchsize'])]
-            tput[system] += [float(row['tput(TPS)']) / 1000000]
-            p99[system] += [float(row['p99(ms)'])]
+    for system in SYSTEMS:
+        with open(result_file_path(args, EXP_NAME, system), 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                system = row['system']
+                batchsize[system] += [float(row['corobatchsize'])]
+                tput[system] += [float(row['tput(TPS)']) / 1000000]
+                p99[system] += [float(row['p99(ms)'])]
 
     fig, axes = plt.subplots(1, 2, figsize=(5.5, 2), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
@@ -53,7 +52,7 @@ def plot(args):
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.measure:
+    if not args.plot:
         create_result_file(args, EXP_NAME)
         print_header(args)
         for workload in WORKLOADS:
@@ -62,4 +61,5 @@ if __name__ == "__main__":
                 for coro_batch_size in CORO_BATCH_SIZES:
                     run(args, system, workload, workload_size,
                         coro_batch_size)
-    plot(args)
+    else:
+        plot(args)

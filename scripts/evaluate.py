@@ -28,14 +28,14 @@ def parse_args():
     ], help='Workload to evaluate.')
     parser.add_argument('--workload-size', default=None, type=int,
         help='Table size if YCSB. Scale factor if TPC-C.')
-    parser.add_argument('--seconds', type=int, default=10,
+    parser.add_argument('--seconds', type=int, default=20,
         help='Seconds to run the benchmark.')
+    parser.add_argument('--threads', type=int, default=os.cpu_count(),
+        help='Number of worker threads.')
     parser.add_argument('--coro-batch-size', type=int, default=None,
         help='Coroutine batch size per worker thread.')
     parser.add_argument('--no-logging', action='store_false', dest='logging',
         help='Disable logging')
-    parser.add_argument('--no-hyperthreading', action='store_false', dest='hyperthreading',
-        help='Disable hyperthreading')
     parser.add_argument('--no-numa-local-workload', action='store_false', dest='numa_local_workload',
         help='Disable NUMA-local workload.')
     parser.add_argument('--no-gc', action='store_false', dest='gc',
@@ -46,6 +46,8 @@ def parse_args():
         help='Suffix to executable.')
     parser.add_argument('--num-upmem-ranks', type=int, default=None,
         help='Total number of UPMEM ranks. Used if system="OLTPim".')
+    parser.add_argument('--measure-on-upmem-server', action='store_true',
+        help='Provide if measuring on UPMEM server.')
     args = parser.parse_args()
 
     if not args.print_header:
@@ -102,10 +104,7 @@ def wrapup_log_dir(args):
         r.check_returncode()
 
 def common_options(args):
-    args.threads = os.cpu_count()
-    if not args.hyperthreading:
-        args.threads = args.threads // 2 # Only physical cores
-    physical_workers_only = 0 if args.hyperthreading else 1
+    physical_workers_only = 1 if args.threads <= (os.cpu_count() // 2) else 0
     enable_gc = 1 if args.gc else 0
     opts = [
         f'-node_memory_gb={args.hugetlb_size_gb_per_node}',
@@ -114,9 +113,10 @@ def common_options(args):
         f'-seconds={args.seconds}',
         f'-enable_gc={enable_gc}',
         '-arena_size_mb=1',
-        '-measure_energy=1',
-        '-measure_mem_traffic=1'
+        '-measure_energy=1'
     ]
+    if args.measure_on_upmem_server:
+        opts += ['-measure_energy_separate_pim=1']
     return opts
 
 def log_options(args):
@@ -263,22 +263,27 @@ def parse_result(result):
     return values_dict
 
 def print_header():
-    csv_header = 'system,suffix,workload,workload_size,corobatchsize,log,HT,NUMALocal,GC,Interleave,' + \
-        'tput(TPS),p99(ms),Pcpu(W),Pdram(W),Ppim(W),' + \
-        'BWdram.rd(MiB/s),BWdram.wr(MiB/s),BWpim.rd(MiB/s),BWpim.wr(MiB/s),' + \
-        'time(s)\n'
+    csv_header = 'system,suffix,workload,workload_size,corobatchsize,' + \
+        'log,NUMALocal,GC,Interleave,' + \
+        'tput(TPS),p99(ms),time(s),' + \
+        'CPUUtil,CPUTurboUtil,' + \
+        'BWdram.rd(MiB/s),BWdram.wr(MiB/w),' + \
+        'BWpim.rd(MiB/s),BWpim.wr(MiB/w),' + \
+        'PIMUtil,PIMmramratio,PIMmramsize(B)' + \
+        '\n'
     with open(args.result_file, 'w') as f:
         f.write(csv_header)
 
 def print_result(args, values):
     csv = f"{args.system},{args.executable_suffix},{args.workload},{args.workload_size}," + \
-        f"{args.coro_batch_size},{args.logging},{args.hyperthreading},{args.numa_local_workload}," + \
+        f"{args.coro_batch_size},{args.logging},{args.numa_local_workload}," + \
         f"{args.gc},{args.interleave}," + \
-        f"{values['txns/s']},{values['latency.p99(ms)']}," + \
-        f"{values['power-cpu(W)']},{values['power-ram(W)']},{values['power-pim(W)']}," + \
-        f"{values['dram-read(MiB/s)']},{values['dram-write(MiB/s)']}," + \
-        f"{values['pim-read(MiB/s)']},{values['pim-write(MiB/s)']}," + \
-        f"{values['total_time(sec)']}\n"
+        f"{values['txns/s']},{values['latency.p99(ms)']},{values['total_time(sec)']}," + \
+        f"{values['cpu-util']},{values['cpu-turbo-util']}," + \
+        f"{values['dram.rd(MiB/s)']},{values['dram.wr(MiB/s)']}," + \
+        f"{values['pim.rd(MiB/s)']},{values['pim.wr(MiB/s)']}," + \
+        f"{values['pim-util']},{values['pim-mram-ratio']},{values['pim-mram-size(B)']}" + \
+        "\n"
     with open(args.result_file, 'a') as f:
         f.write(csv)
 

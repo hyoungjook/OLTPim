@@ -13,8 +13,6 @@ GC_OPTS = {'YCSB-C': [True], 'YCSB-A': [False, True]}
 SIZE_TO_LABEL = {10**6: '1M', 10**7: '10M', 10**8: '100M', 10**9: '1B'}
 
 def plot(args):
-    MOSAICDB = 'MosaicDB'
-    OLTPIM = 'OLTPim'
     ycsbc_size = {MOSAICDB: [], OLTPIM: []}
     ycsbc_tput = {MOSAICDB: [], OLTPIM: []}
     ycsbc_p99 = {MOSAICDB: [], OLTPIM: []}
@@ -32,32 +30,33 @@ def plot(args):
     ycsba_nogc_size = {MOSAICDB: [], OLTPIM: []}
     ycsba_nogc_tput = {MOSAICDB: [], OLTPIM: []}
     ycsba_nogc_p99 = {MOSAICDB: [], OLTPIM: []}
-    with open(result_file_path(args, EXP_NAME), 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            system = row['system']
-            workload = row['workload']
-            if workload == 'YCSB-C':
-                ycsbc_size[system] += [int(row['workload_size'])]
-                ycsbc_tput[system] += [float(row['tput(TPS)']) / 1000000]
-                ycsbc_p99[system] += [float(row['p99(ms)'])]
-                ycsbc_dramrd[system] += [float(row['BWdram.rd(MiB/s)']) / 1024]
-                ycsbc_dramwr[system] += [float(row['BWdram.wr(MiB/s)']) / 1024]
-                ycsbc_pimrd[system] += [float(row['BWpim.rd(MiB/s)']) / 1024]
-                ycsbc_pimwr[system] += [float(row['BWpim.wr(MiB/s)']) / 1024]
-            if workload == 'YCSB-A':
-                if row['GC'] == 'True':
-                    ycsba_size[system] += [int(row['workload_size'])]
-                    ycsba_tput[system] += [float(row['tput(TPS)']) / 1000000]
-                    ycsba_p99[system] += [float(row['p99(ms)'])]
-                    ycsba_dramrd[system] += [float(row['BWdram.rd(MiB/s)']) / 1024]
-                    ycsba_dramwr[system] += [float(row['BWdram.wr(MiB/s)']) / 1024]
-                    ycsba_pimrd[system] += [float(row['BWpim.rd(MiB/s)']) / 1024]
-                    ycsba_pimwr[system] += [float(row['BWpim.wr(MiB/s)']) / 1024]
-                else:
-                    ycsba_nogc_size[system] += [int(row['workload_size'])]
-                    ycsba_nogc_tput[system] += [float(row['tput(TPS)']) / 1000000]
-                    ycsba_nogc_p99[system] += [float(row['p99(ms)'])]
+    for system in SYSTEMS:
+        with open(result_file_path(args, EXP_NAME, system), 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                system = row['system']
+                workload = row['workload']
+                if workload == 'YCSB-C':
+                    ycsbc_size[system] += [int(row['workload_size'])]
+                    ycsbc_tput[system] += [float(row['tput(TPS)']) / 1000000]
+                    ycsbc_p99[system] += [float(row['p99(ms)'])]
+                    ycsbc_dramrd[system] += [float(row['BWdram.rd(MiB/s)']) / 1024]
+                    ycsbc_dramwr[system] += [float(row['BWdram.wr(MiB/s)']) / 1024]
+                    ycsbc_pimrd[system] += [float(row['BWpim.rd(MiB/s)']) / 1024]
+                    ycsbc_pimwr[system] += [float(row['BWpim.wr(MiB/s)']) / 1024]
+                if workload == 'YCSB-A':
+                    if row['GC'] == 'True':
+                        ycsba_size[system] += [int(row['workload_size'])]
+                        ycsba_tput[system] += [float(row['tput(TPS)']) / 1000000]
+                        ycsba_p99[system] += [float(row['p99(ms)'])]
+                        ycsba_dramrd[system] += [float(row['BWdram.rd(MiB/s)']) / 1024]
+                        ycsba_dramwr[system] += [float(row['BWdram.wr(MiB/s)']) / 1024]
+                        ycsba_pimrd[system] += [float(row['BWpim.rd(MiB/s)']) / 1024]
+                        ycsba_pimwr[system] += [float(row['BWpim.wr(MiB/s)']) / 1024]
+                    else:
+                        ycsba_nogc_size[system] += [int(row['workload_size'])]
+                        ycsba_nogc_tput[system] += [float(row['tput(TPS)']) / 1000000]
+                        ycsba_nogc_p99[system] += [float(row['p99(ms)'])]
 
     # Readonly performance
     fig, axes = plt.subplots(2, 2, figsize= (5.5, 4), constrained_layout=True)
@@ -214,7 +213,7 @@ def plot(args):
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.measure:
+    if not args.plot:
         create_result_file(args, EXP_NAME)
         print_header(args)
         for workload in WORKLOADS:
@@ -223,4 +222,5 @@ if __name__ == "__main__":
                 for gc in gc_opts:
                     for system in SYSTEMS:
                         run(args, system, workload, workload_size, no_gc=(not gc))
-    plot(args)
+    else:
+        plot(args)

@@ -83,9 +83,9 @@ DEFINE_bool(enable_perf, false,
             "Whether to run Linux perf along with benchmark.");
 DEFINE_string(perf_record_event, "", "Perf record event");
 DEFINE_bool(measure_energy, false,
-            "Whether to measure energy consumption using linux perf.");
-DEFINE_bool(measure_mem_traffic, false,
-            "Whether to measure memory traffic using linux perf.");
+            "Whether to measure metrics for power estimation using linux perf.");
+DEFINE_bool(measure_energy_separate_pim, false,
+            "When measure_energy, count dram and pim bandwidth separately. Hardcoded for upmemcloud9.");
 #if defined(SSN) || defined(SSI)
 DEFINE_bool(safesnap, false,
             "Whether to use the safe snapshot (for SSI and SSN only).");
@@ -170,7 +170,7 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
   ermia::config::enable_perf = FLAGS_enable_perf;
   ermia::config::perf_record_event = FLAGS_perf_record_event;
   ermia::config::measure_energy = FLAGS_measure_energy;
-  ermia::config::measure_mem_traffic = FLAGS_measure_mem_traffic;
+  ermia::config::measure_energy_separate_pim = FLAGS_measure_energy_separate_pim;
   ermia::config::physical_workers_only = FLAGS_physical_workers_only;
   ermia::config::physical_io_workers_only = FLAGS_physical_io_workers_only;
   if (ermia::config::physical_workers_only)
@@ -329,7 +329,6 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
             << std::endl;
   std::cerr << "  enable-perf       : " << ermia::config::enable_perf << std::endl;
   std::cerr << "  measure-energy    : " << ermia::config::measure_energy << std::endl;
-  std::cerr << "  measure-llc-miss    : " << ermia::config::measure_mem_traffic << std::endl;
   std::cerr << "  pipelined commit  : " << ermia::config::pcommit << std::endl;
   std::cerr << "  dedicated pcommit thread: " << ermia::config::pcommit_thread
             << std::endl;
