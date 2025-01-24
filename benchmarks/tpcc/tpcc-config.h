@@ -345,6 +345,20 @@ class tpcc_worker_mixin : private _dummy {
   static std::vector<uint> hot_whs;
   static std::vector<uint> cold_whs;
 
+  ALWAYS_INLINE unsigned pick_home_wh(util::fast_random &r, uint worker_id, uint batch_id, uint total_batches) {
+    // worker_id is in [0, worker_threads)
+    // batch_id is in [0, coro_batch_size + coro_cold_queue_size)
+    // basically assign to global_id = worker_id + batch_id * worker_threads
+    const uint global_id = worker_id + batch_id * ermia::config::worker_threads;
+    // total_batches is pre-computed as worker_threads * (coro_batch_size + coro_cold_queue_size)
+    if (total_batches >= NumWarehouses()) {
+      return 1 + global_id % NumWarehouses();
+    }
+    else {
+      return 1 + (r.next() % (NumWarehouses() / total_batches)) * total_batches + global_id;
+    }
+  }
+
   ALWAYS_INLINE unsigned pick_wh(util::fast_random &r, uint home_wh) {
     if (g_wh_temperature) {  // do it 80/20 way
       uint w = 0;
@@ -1697,32 +1711,15 @@ f(oorder); f(oorder_c_id_idx); f(order_line); f(stock); f(stock_data); f(warehou
   virtual std::vector<bench_worker *> make_workers() {
     util::fast_random r(23984543);
     std::vector<bench_worker *> ret;
-    if (FLAGS_tpcc_numa_local && FLAGS_tpcc_coro_local_wh) {
+    if (FLAGS_tpcc_numa_local) {
       // i-th worker thread's j-th coroutine's home_warehouse_id is (i + j * worker_threads)
       // Because (i % numa_nodes) == numa_id, in order to make all home_warehouse_id to be numa_local,
       // (i + j * worker_threads) % numa_nodes == (i % numa_nodes) should be hold: below!
       ALWAYS_ASSERT(ermia::config::worker_threads % ermia::config::numa_nodes == 0);
     }
-    if (FLAGS_tpcc_coro_local_wh && ermia::config::read_txn_type != "tpcc-sequential" && !FLAGS_tpcc_numa_local) {
-      ASSERT(NumWarehouses() >= ermia::config::worker_threads * (ermia::config::coro_batch_size
-                                                                  + ermia::config::coro_cold_queue_size));
-      for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-        ret.push_back(new WorkerType(i, r.next(), db, open_tables, partitions,
-                                     &barrier_a, &barrier_b, i * (ermia::config::coro_batch_size
-                                                                  + ermia::config::coro_cold_queue_size) + 1));
-      }
-      return ret;
-    }
-    if (NumWarehouses() <= ermia::config::worker_threads) {
-      for (size_t i = 0; i < ermia::config::worker_threads; i++)
-        ret.push_back(new WorkerType(i, r.next(), db, open_tables, partitions,
-                                    &barrier_a, &barrier_b, (i % NumWarehouses()) + 1));
-    } else {
-      for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-        ret.push_back(new WorkerType(i, r.next(), db, open_tables, partitions,
-                                     &barrier_a, &barrier_b, i + 1));
-      }
-    }
+    for (size_t i = 0; i < ermia::config::worker_threads; i++)
+      ret.push_back(new WorkerType(i, r.next(), db, open_tables, partitions,
+                                  &barrier_a, &barrier_b));
     return ret;
   }
 

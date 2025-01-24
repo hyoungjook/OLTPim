@@ -12,12 +12,11 @@ class tpcc_hybrid_worker : public bench_worker, public tpcc_worker_mixin {
   tpcc_hybrid_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
                  const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                  const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
-                 spin_barrier *barrier_a, spin_barrier *barrier_b,
-                 uint home_warehouse_id)
+                 spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        tpcc_worker_mixin(partitions),
-        home_warehouse_id(home_warehouse_id) {
-  ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
+        tpcc_worker_mixin(partitions) {
+  total_batches = ermia::config::worker_threads *
+    (ermia::config::coro_batch_size + ermia::config::coro_cold_queue_size);
   memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
 }
 
@@ -80,7 +79,7 @@ class tpcc_hybrid_worker : public bench_worker, public tpcc_worker_mixin {
   ALWAYS_INLINE ermia::varstr &str(ermia::str_arena &a, uint64_t size) { return *a.next(size); }
 
  private:
-  const uint home_warehouse_id;
+  uint total_batches;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
   uint32_t _coro_batch_size;
 
@@ -863,13 +862,8 @@ coldq:
 };
 
 ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_new_order(ermia::transaction *txn, uint32_t idx) {
-  uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
-  } else {
-    _home_warehouse_id = home_warehouse_id;
-  }
-  const uint warehouse_id = pick_wh(r, _home_warehouse_id);
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, idx, total_batches);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, 10);
   const uint customerID = GetCustomerId(r);
   const uint numItems = RandomNumber(r, 5, 15);
@@ -1066,13 +1060,8 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_new_order(ermia::transaction *tx
 }  // new-order
 
 ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_payment(ermia::transaction *txn, uint32_t idx) {
-  uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
-  } else {
-    _home_warehouse_id = home_warehouse_id;
-  }
-  const uint warehouse_id = pick_wh(r, _home_warehouse_id);
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, idx, total_batches);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   uint customerDistrictID, customerWarehouseID;
   if (likely(FLAGS_tpcc_disable_xpartition_txn || NumWarehouses() == 1 ||
@@ -1243,13 +1232,8 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_delivery(ermia::transaction *txn
   xc->begin_epoch = 0;
   rc_t rc = rc_t{RC_INVALID};
 
-  uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
-  } else {
-    _home_warehouse_id = home_warehouse_id;
-  }
-  const uint warehouse_id = pick_wh(r, _home_warehouse_id);
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, idx, total_batches);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   const uint32_t ts = GetCurrentTimeMillis();
 
@@ -1384,13 +1368,8 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_order_status(ermia::transaction 
   xc->begin_epoch = 0;
   rc_t rc = rc_t{RC_INVALID};
 
-  uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
-  } else {
-    _home_warehouse_id = home_warehouse_id;
-  }
-  const uint warehouse_id = pick_wh(r, _home_warehouse_id);
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, idx, total_batches);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
 
   // output from txn counters:
@@ -1524,13 +1503,8 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_stock_level(ermia::transaction *
   xc->begin_epoch = 0;
   rc_t rc = rc_t{RC_INVALID};
 
-  uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
-  } else {
-    _home_warehouse_id = home_warehouse_id;
-  }
-  const uint warehouse_id = pick_wh(r, _home_warehouse_id);
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, idx, total_batches);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint threshold = RandomNumber(r, 10, 20);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
 
@@ -1627,13 +1601,8 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_credit_check(ermia::transaction 
   xc->begin_epoch = 0;
   rc_t rc = rc_t{RC_INVALID};
 
-  uint _home_warehouse_id = 0;
-  if (likely(FLAGS_tpcc_coro_local_wh)) {
-    _home_warehouse_id = home_warehouse_id + idx * (FLAGS_tpcc_numa_local ? ermia::config::worker_threads : 1);
-  } else {
-    _home_warehouse_id = home_warehouse_id;
-  }
-  const uint warehouse_id = pick_wh(r, _home_warehouse_id);
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, idx, total_batches);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   uint customerDistrictID, customerWarehouseID;
   if (likely(FLAGS_tpcc_disable_xpartition_txn || NumWarehouses() == 1 ||
@@ -2049,7 +2018,7 @@ void tpcc_hybrid_worker::MyWork(char *) {
   workload = get_workload();
   txn_counts.resize(workload.size());
   _coro_batch_size = ermia::config::coro_batch_size;
-  if (FLAGS_tpcc_numa_local) ALWAYS_ASSERT((home_warehouse_id-1) % ermia::config::numa_nodes == me->node);
+  if (FLAGS_tpcc_numa_local) ALWAYS_ASSERT(worker_id % ermia::config::numa_nodes == me->node);
 
   auto schedule_mode = ermia::config::coro_scheduler;
   LOG_IF(FATAL, ermia::config::io_threads > ermia::config::worker_threads) << "Not enough threads.";

@@ -12,12 +12,9 @@ class tpcc_sequential_worker : public bench_worker, public tpcc_worker_mixin {
   tpcc_sequential_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
               const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
-              spin_barrier *barrier_a, spin_barrier *barrier_b,
-              uint home_warehouse_id)
+              spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        tpcc_worker_mixin(partitions),
-        home_warehouse_id(home_warehouse_id) {
-    ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
+        tpcc_worker_mixin(partitions) {
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
   }
 
@@ -77,11 +74,11 @@ class tpcc_sequential_worker : public bench_worker, public tpcc_worker_mixin {
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
 
  private:
-  const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
 };
 
 rc_t tpcc_sequential_worker::txn_new_order() {
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, 0, ermia::config::worker_threads);
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, 10);
   const uint customerID = GetCustomerId(r);
@@ -263,6 +260,7 @@ rc_t tpcc_sequential_worker::txn_new_order() {
 }  // new-order
 
 rc_t tpcc_sequential_worker::txn_payment() {
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, 0, ermia::config::worker_threads);
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   uint customerDistrictID, customerWarehouseID;
@@ -440,6 +438,7 @@ rc_t tpcc_sequential_worker::txn_payment() {
 }
 
 rc_t tpcc_sequential_worker::txn_delivery() {
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, 0, ermia::config::worker_threads);
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   const uint32_t ts = GetCurrentTimeMillis();
@@ -559,6 +558,7 @@ rc_t tpcc_sequential_worker::txn_delivery() {
 }
 
 rc_t tpcc_sequential_worker::txn_order_status() {
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, 0, ermia::config::worker_threads);
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
 
@@ -681,6 +681,7 @@ rc_t tpcc_sequential_worker::txn_order_status() {
 }
 
 rc_t tpcc_sequential_worker::txn_stock_level() {
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, 0, ermia::config::worker_threads);
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint threshold = RandomNumber(r, 10, 20);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -775,6 +776,7 @@ rc_t tpcc_sequential_worker::txn_credit_check() {
           WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
   */
 
+  const uint home_warehouse_id = pick_home_wh(r, worker_id, 0, ermia::config::worker_threads);
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   uint customerDistrictID, customerWarehouseID;
