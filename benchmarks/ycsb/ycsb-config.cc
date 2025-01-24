@@ -59,7 +59,7 @@ YcsbWorkload YcsbWorkloadI('I', 100U, 0, 0, 0, 0);  // Workload I - 100% insert
 YcsbWorkload ycsb_workload = YcsbWorkloadC;
 
 void ycsb_create_db(ermia::Engine *db) {
-  ermia::thread::Thread *thread = ermia::thread::GetThread(true);
+  ermia::thread::Thread *thread = ermia::thread::GetThread(ermia::thread::CoreType::PHYSICAL);
   ALWAYS_ASSERT(thread);
 
   auto create_table = [=](char *) {

@@ -98,6 +98,12 @@ struct Thread {
   }
 };
 
+enum CoreType: uint8_t {
+  LOGICAL = 0,
+  PHYSICAL = 1,
+  ANY = 2
+};
+
 struct PerNodeThreadPool {
   static uint32_t max_threads_per_node;
   uint16_t node CACHE_ALIGNED;
@@ -107,7 +113,7 @@ struct PerNodeThreadPool {
   PerNodeThreadPool(uint16_t n);
 
   // Get a single new thread which can be physical or logical
-  Thread *GetThread(bool physical);
+  Thread *GetThread(CoreType physical);
 
   // Release a thread back to the pool
   inline void PutThread(Thread *t) {
@@ -119,7 +125,7 @@ struct PerNodeThreadPool {
 extern PerNodeThreadPool *thread_pools;
 extern uint32_t num_thread_pools;
 
-inline Thread *GetThread(uint16_t from, bool physical) {
+inline Thread *GetThread(uint16_t from, CoreType physical) {
   if (config::threadpool) {
     return thread_pools[from].GetThread(physical);
   } else {
@@ -127,7 +133,7 @@ inline Thread *GetThread(uint16_t from, bool physical) {
   }
 }
 
-inline Thread *GetThread(bool physical /* don't care where */) {
+inline Thread *GetThread(CoreType physical /* don't care where */) {
   if (config::threadpool) {
     for (uint16_t i = 0; i < num_thread_pools; i++) {
       auto *t = thread_pools[i].GetThread(physical);
@@ -153,7 +159,8 @@ inline void PutThread(Thread *t) {
 // Benchmark and log replay threads deal with this only,
 // not with Thread.
 struct Runner {
-  Runner(bool physical = true) : me(nullptr), physical(physical) {}
+  Runner(CoreType physical = CoreType::PHYSICAL)
+    : me(nullptr), physical(physical) {}
   virtual ~Runner() {
     if (me) {
       Join();
@@ -173,7 +180,8 @@ struct Runner {
     ALWAYS_ASSERT(not me);
     me = thread::GetThread(physical);
     if (me) {
-      LOG_IF(FATAL, config::threadpool && me->is_physical != physical) << "Not the requested thread type";
+      if (physical != CoreType::ANY)
+        LOG_IF(FATAL, config::threadpool && me->is_physical != (bool)(uint8_t)physical) << "Not the requested thread type";
       me->sleep_when_idle = sleep_when_idle;
       if (config::threadpool) {
         LOG(INFO) << "Impersonated on thread " << me->node << ", " << me->core;
@@ -186,7 +194,8 @@ struct Runner {
     ALWAYS_ASSERT(not me);
     me = thread::GetThread(node, physical);
     if (me) {
-      LOG_IF(FATAL, me->is_physical != physical) << "Not the requested thread type";
+      if (physical != CoreType::ANY)
+        LOG_IF(FATAL, me->is_physical != (bool)(uint8_t)physical) << "Not the requested thread type";
       me->sleep_when_idle = sleep_when_idle;
     }
     return me != nullptr;
@@ -211,7 +220,7 @@ struct Runner {
   }
 
   Thread *me;
-  bool physical;
+  CoreType physical;
 };
 }  // namespace thread
 }  // namespace ermia

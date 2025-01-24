@@ -143,8 +143,7 @@ class ycsb_bench_runner : public bench_runner {
  protected:
   virtual std::vector<bench_loader *> make_loaders() {
     uint64_t requested = FLAGS_ycsb_hot_table_size;
-    uint32_t nloaders =
-	    std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+    uint32_t nloaders = std::thread::hardware_concurrency();
 
     uint64_t records_per_thread = std::max<uint64_t>(1, FLAGS_ycsb_hot_table_size / nloaders);
     FLAGS_ycsb_hot_table_size = records_per_thread * nloaders;

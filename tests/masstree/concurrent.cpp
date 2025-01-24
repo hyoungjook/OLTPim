@@ -145,7 +145,7 @@ class ConcurrentMasstree: public ::testing::Test {
 
     void initRunningThreads() {
         for(uint32_t i = 0; i < ermia::config::threads; i++) {
-            ermia::thread::Thread* th = ermia::thread::GetThread(true);
+            ermia::thread::Thread* th = ermia::thread::GetThread(ermia::thread::CoreType::PHYSICAL);
             EXPECT_TRUE(th);
             runnable_threads_.emplace_back(th);
         }

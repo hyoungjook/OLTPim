@@ -145,7 +145,7 @@ void bench_runner::run() {
   // information about index pointers created by create_file_task.
   ermia::thread::Thread::Task runner_task =
     std::bind(&bench_runner::prepare, this, std::placeholders::_1);
-  ermia::thread::Thread *runner_thread = ermia::thread::GetThread(true /* physical */);
+  ermia::thread::Thread *runner_thread = ermia::thread::GetThread(ermia::thread::CoreType::PHYSICAL);
   runner_thread->StartTask(runner_task);
   runner_thread->Join();
   ermia::thread::PutThread(runner_thread);
@@ -159,11 +159,8 @@ void bench_runner::run() {
     uint32_t done = 0;
     uint32_t n_running = 0;
   process:
-    // force bench_loader to use physical thread and use all the physical threads
-    // in the same socket to load (assuming 2HT per core).
     // if numa_spread, also spread loader threads across numa nodes.
-    uint32_t n_loader_threads =
-      std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+    uint32_t n_loader_threads = std::thread::hardware_concurrency();
     ALWAYS_ASSERT(!ermia::config::numa_spread ||
       n_loader_threads % ermia::config::numa_nodes == 0);
 

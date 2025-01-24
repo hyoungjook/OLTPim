@@ -41,7 +41,7 @@ class bench_loader : public ermia::thread::Runner {
  public:
   bench_loader(unsigned long seed, ermia::Engine *db,
                const std::map<std::string, ermia::OrderedIndex *> &open_tables)
-      : Runner(true)
+      : Runner(ermia::thread::CoreType::ANY)
       , r(seed), db(db), open_tables(open_tables) {
     // don't try_instantiate() here; do it when we start to load.
     // The way we reuse threads relies on this fact (see bench_runner::run()).
@@ -96,9 +96,12 @@ class bench_worker : public ermia::thread::Runner {
         ntxn_query_commits(0),
         fetch_cold_tx_interval(ermia::config::fetch_cold_tx_interval) {
     if (!ermia::config::physical_io_workers_only && ermia::config::read_txn_type == "hybrid-coro" && worker_id < ermia::config::io_threads) {
-      physical = false;
+      physical = ermia::thread::CoreType::LOGICAL;
     } else {
-      physical = ermia::config::physical_workers_only ? true : (worker_id >= ermia::config::worker_threads / 2);
+      physical = ermia::config::physical_workers_only ? ermia::thread::CoreType::PHYSICAL : (
+        (worker_id >= ermia::config::worker_threads / 2) ?
+          ermia::thread::CoreType::PHYSICAL : ermia::thread::CoreType::LOGICAL
+      );
     }
     txn_obj_buf = (ermia::transaction *)malloc(sizeof(ermia::transaction));
     arena = new ermia::str_arena(ermia::config::arena_size_mb);

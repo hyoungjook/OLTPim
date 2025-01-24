@@ -180,7 +180,7 @@ class Context {
     static std::vector<ermia::thread::Thread *> getThreads(unsigned int num) {
         std::vector<ermia::thread::Thread *> idle_threads;
         for (uint32_t i = 0; i < std::min(num, ermia::config::threads); i++) {
-            idle_threads.emplace_back(ermia::thread::GetThread(true));
+            idle_threads.emplace_back(ermia::thread::GetThread(ermia::thread::CoreType::PHYSICAL));
             assert(idle_threads.back() && "Threads not available!");
         }
         return idle_threads;

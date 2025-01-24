@@ -11,7 +11,7 @@ def parse_args():
     parser.add_argument('--build-dir', type=str,
         default=str(Path(__file__).parent.parent / 'build'),
         help='Path of the program build directory.')
-    parser.add_argument('--log-dir', type=str, default='/scratch/log',
+    parser.add_argument('--log-dir', type=str, default='/mnt/log',
         help='Path of the logging directory.')
     parser.add_argument('--hugetlb-size-gb', type=int, default=160,
         help='Size (GiB) of hugeTLB page to pre-allocate.')

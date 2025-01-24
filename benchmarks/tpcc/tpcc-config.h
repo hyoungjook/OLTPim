@@ -1575,7 +1575,7 @@ class tpcc_bench_runner : public bench_runner {
       }
     };
 
-    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
+    ermia::thread::Thread *thread = ermia::thread::GetThread(ermia::thread::CoreType::PHYSICAL);
     ALWAYS_ASSERT(thread);
     thread->StartTask(register_index);
     thread->Join();

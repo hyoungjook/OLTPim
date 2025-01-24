@@ -200,7 +200,7 @@ void Thread::IdleTask() {
 #endif
 }
 
-Thread *PerNodeThreadPool::GetThread(bool physical) {
+Thread *PerNodeThreadPool::GetThread(CoreType physical) {
 retry:
   uint64_t b = volatile_read(bitmap);
   uint64_t xor_pos = b ^ (~uint64_t{0});
@@ -213,7 +213,10 @@ retry:
       return nullptr;
     }
     t = &threads[pos];
-    if ((!((1UL << pos) & b)) && (t->is_physical == physical)) {
+    if ((!((1UL << pos) & b)) && (
+        (physical == CoreType::ANY) ||
+        (t->is_physical == (bool)(uint8_t)physical)
+      )) {
       break;
     }
     ++pos;

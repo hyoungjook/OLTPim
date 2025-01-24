@@ -12,7 +12,7 @@ def parse_args():
     parser.add_argument('--build-dir', type=str,
         default=str(Path(__file__).parent.parent / 'build'),
         help='Path of the program build directory.')
-    parser.add_argument('--log-dir', type=str, default='/scratch/log',
+    parser.add_argument('--log-dir', type=str, default='/mnt/log',
         help='Path of the logging directory.')
     parser.add_argument('--hugetlb-size-gb', type=int, default=160,
         help='Size (GiB) of hugeTLB page to pre-allocate.')
@@ -48,6 +48,8 @@ def parse_args():
         help='Total number of UPMEM ranks. Used if system="OLTPim".')
     parser.add_argument('--measure-on-upmem-server', action='store_true',
         help='Provide if measuring on UPMEM server.')
+    parser.add_argument('--record-time-series', type=str, default=None, dest='time_series_file',
+        help='Additionally record time series tput data to the given file.')
     args = parser.parse_args()
 
     if not args.print_header:
@@ -265,6 +267,26 @@ def parse_result(result):
     values_dict = {}
     for i in range(len(values) // 2):
         values_dict[values[2 * i + 1]] = float(values[2 * i])
+
+    if args.time_series_file:
+        tputs_series = []
+        series_parse = False
+        for line in lines:
+            if 'starting benchmark...' in line:
+                series_parse = True
+                continue
+            if '--- benchmark statistics ---' in line:
+                series_parse = False
+                break
+            if series_parse:
+                next_series = len(tputs) + 1
+                if line.startswith(f'{next_series},'):
+                    # decode
+                    tokens = line.split(',')
+                    tputs_series += [float(tokens[3])]
+        with open(args.time_series_file, "w") as f:
+            f.write(','.join(map(str, tputs_series)))
+
     return values_dict
 
 def print_header():
