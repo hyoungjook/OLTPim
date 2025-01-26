@@ -1105,10 +1105,12 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_payment(ermia::transaction *txn,
 
   warehouse::value v_w_new(*v_w);
   v_w_new.w_ytd += paymentAmount;
-  rc = tbl_warehouse(warehouse_id)
-           ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w),
-                          Encode(str(arenas[idx], Size(v_w_new)), v_w_new));
-  TryCatchCoro(rc);
+  if (!FLAGS_tpcc_less_contention) {
+    rc = tbl_warehouse(warehouse_id)
+             ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w),
+                            Encode(str(arenas[idx], Size(v_w_new)), v_w_new));
+    TryCatchCoro(rc);
+  }
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
@@ -1126,10 +1128,12 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_payment(ermia::transaction *txn,
 
   district::value v_d_new(*v_d);
   v_d_new.d_ytd += paymentAmount;
-  rc = tbl_district(warehouse_id)
-           ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d),
-                          Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
-  TryCatchCoro(rc);
+  if (!FLAGS_tpcc_less_contention) {
+    rc = tbl_district(warehouse_id)
+             ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d),
+                            Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
+    TryCatchCoro(rc);
+  }
 
   customer::key k_c;
   customer::value v_c;

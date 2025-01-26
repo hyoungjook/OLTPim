@@ -292,6 +292,7 @@ void bench_runner::start_measurement() {
       dup2(eng_perf_fds[1][1], STDERR_FILENO);
       exit(execl("/usr/bin/perf", "perf", "stat", "-a", "-e",
         ermia::config::measure_energy_on_upmem_server ? (
+          "power/energy-pkg/,power/energy-ram/,"
           // Hardcoded for upmemcloud9
           "uncore_imc_0/cas_count_read/,uncore_imc_0/cas_count_write/,"
           "uncore_imc_1/cas_count_read/,uncore_imc_1/cas_count_write/,"
@@ -300,6 +301,7 @@ void bench_runner::start_measurement() {
           "uncore_imc_4/cas_count_read/,uncore_imc_4/cas_count_write/,"
           "uncore_imc_5/cas_count_read/,uncore_imc_5/cas_count_write/"
         ) : (
+          "power/energy-pkg/,power/energy-ram/,"
           "uncore_imc/cas_count_read/,uncore_imc/cas_count_write/"
         ),
         nullptr));
@@ -321,24 +323,15 @@ void bench_runner::start_measurement() {
 
   // Print some results every second
   uint64_t slept = 0;
-  uint64_t last_us = util::timer::cur_usec();
   uint64_t last_commits = 0, last_aborts = 0;
-  uint64_t last_latency_numer_us = 0;
 
   // Print CPU utilization as well. Code adapted from:
   // https://stackoverflow.com/questions/63166/how-to-determine-cpu-and-memory-consumption-from-inside-a-process
-  FILE* file;
   struct tms timeSample;
-  char line[128];
-
   clock_t lastCPU = times(&timeSample);
   clock_t lastSysCPU = timeSample.tms_stime;
   clock_t lastUserCPU = timeSample.tms_utime;
   uint32_t nprocs = std::thread::hardware_concurrency();
-
-  file = fopen("/proc/cpuinfo", "r");
-  fclose(file);
-
   auto get_cpu_util = [&]() {
     ASSERT(ermia::config::print_cpu_util);
     struct tms timeSample;
@@ -375,41 +368,31 @@ void bench_runner::start_measurement() {
   if (!ermia::config::benchmark_transactions) {
     // Time-based benchmark.
     if (ermia::config::print_cpu_util) {
-      printf("Sec,Commits,Aborts,Tput,avgLat(us),CPU\n");
+      printf("Sec,Commits,Aborts,CPU\n");
     } else {
-      printf("Sec,Commits,Aborts,Tput,avgLat(us)\n");
+      printf("Sec,Commits,Aborts\n");
     }
 
     auto gather_stats = [&]() {
       sleep(1);
-      uint64_t sec_us = util::timer::cur_usec() - last_us;
-      last_us += sec_us;
-      uint64_t sec_commits = 0, sec_aborts = 0, sec_latency_numer_us = 0;
+      uint64_t sec_commits = 0, sec_aborts = 0;
       for (size_t i = 0; i < ermia::config::worker_threads; i++) {
         sec_commits += workers[i]->get_ntxn_commits();
         sec_aborts += workers[i]->get_ntxn_aborts();
-        sec_latency_numer_us += ermia::config::pcommit ?
-          workers[i]->get_log()->get_latency() :
-          workers[i]->get_latency_numer_us();
       }
       sec_commits -= last_commits;
       last_commits += sec_commits;
       sec_aborts -= last_aborts;
       last_aborts += sec_aborts;
-      sec_latency_numer_us -= last_latency_numer_us;
-      last_latency_numer_us += sec_latency_numer_us;
-
-      double tput = (double)(sec_commits + sec_aborts) / ((double)sec_us / 1000000.0);
-      double avg_latency_us = (double)(sec_latency_numer_us) / (sec_commits);
 
       if (ermia::config::print_cpu_util) {
         sec_util = get_cpu_util();
         total_util += sec_util;
-        printf("%lu,%lu,%lu,%lf,%lf,%.2f%%\n",
-          slept + 1, sec_commits, sec_aborts, tput, avg_latency_us, sec_util);
+        printf("%lu,%lu,%lu,%.2f%%\n",
+          slept + 1, sec_commits, sec_aborts, sec_util);
       } else {
-        printf("%lu,%lu,%lu,%lf,%lf\n", 
-          slept + 1, sec_commits, sec_aborts, tput, avg_latency_us);
+        printf("%lu,%lu,%lu\n", 
+          slept + 1, sec_commits, sec_aborts);
       }
       slept++;
     };
@@ -548,6 +531,7 @@ void bench_runner::start_measurement() {
   double dram_rd_mibps, dram_wr_mibps;
   double pim_rd_mibps, pim_wr_mibps;
   double pim_util, pim_mram_ratio, pim_mram_avg_size;
+  double power_pkg, power_ram;
   if (ermia::config::measure_energy) {
     FILE *outf;
     char *tok_buf;
@@ -641,6 +625,14 @@ void bench_runner::start_measurement() {
         }
       }
     }
+    for (tok_i = 0; tok_i < tokens.size(); ++tok_i) {
+      if (tokens[tok_i] == "power/energy-pkg/") {
+        power_pkg = std::stod(tokens[tok_i - 2]) / elapsed_sec;
+      }
+      else if (tokens[tok_i] == "power/energy-ram/") {
+        power_ram = std::stod(tokens[tok_i - 2]) / elapsed_sec;
+      }
+    }
     dram_rd_mibps /= elapsed_sec;
     dram_wr_mibps /= elapsed_sec;
     pim_rd_mibps /= elapsed_sec;
@@ -692,12 +684,14 @@ void bench_runner::start_measurement() {
 
   // output for plotting script
   std::cout << "---------------------------------------\n";
-  std::cout
-       << agg_throughput << " txns/s, "
-       << p99_latency_ms << " latency.p99(ms), "
-       << elapsed_sec << " total_time(sec), ";
+  std::cout << elapsed_sec << " time(s), "
+        << n_commits << " commits, "
+        << n_aborts << " aborts, "
+        << p99_latency_ms << " p99(ms), ";
   if (ermia::config::measure_energy) {
-    std::cout << cpu_util << " cpu-util, "
+    std::cout << power_pkg << " power-pkg(W), "
+          << power_ram << " power-ram(W), "
+          << cpu_util << " cpu-util, "
           << cpu_turbo_util << " cpu-turbo-util, "
           << dram_rd_mibps << " dram.rd(MiB/s), "
           << dram_wr_mibps << " dram.wr(MiB/s), ";

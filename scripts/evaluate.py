@@ -292,7 +292,8 @@ def parse_result(result):
 def print_header():
     csv_header = 'system,suffix,workload,workload_size,corobatchsize,' + \
         'log,NUMALocal,GC,Interleave,' + \
-        'tput(TPS),p99(ms),time(s),' + \
+        'time(s),commits,aborts,p99(ms),' + \
+        'Ppkg(W),Pram(W),' + \
         'CPUUtil,CPUTurboUtil,' + \
         'BWdram.rd(MiB/s),BWdram.wr(MiB/s),' + \
         'BWpim.rd(MiB/s),BWpim.wr(MiB/s),' + \
@@ -305,7 +306,8 @@ def print_result(args, values):
     csv = f"{args.system},{args.executable_suffix},{args.workload},{args.workload_size}," + \
         f"{args.coro_batch_size},{args.logging},{args.numa_local_workload}," + \
         f"{args.gc},{args.interleave}," + \
-        f"{values['txns/s']},{values['latency.p99(ms)']},{values['total_time(sec)']}," + \
+        f"{values['time(s)']},{values['commits']},{values['aborts']},{values['p99(ms)']}," + \
+        f"{values['power-pkg(W)']},{values['power-ram(W)']}," + \
         f"{values['cpu-util']},{values['cpu-turbo-util']}," + \
         f"{values['dram.rd(MiB/s)']},{values['dram.wr(MiB/s)']}," + \
         f"{values['pim.rd(MiB/s)']},{values['pim.wr(MiB/s)']}," + \

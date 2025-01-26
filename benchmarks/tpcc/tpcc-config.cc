@@ -33,6 +33,7 @@ DEFINE_uint32(tpcc_cold_item_pct, 0, "The percentage of cold item records when r
 
 DEFINE_bool(tpcc_coro_local_wh, true, "Whether to use coro-local warehouse");
 DEFINE_bool(tpcc_numa_local, false, "Whether to use numa-local tables and txns");
+DEFINE_bool(tpcc_less_contention, false, "Whether to use less-contention workload.");
 
 int g_wh_temperature = 0;
 uint g_microbench_rows = 10;  // this many rows
@@ -186,6 +187,11 @@ void tpcc_parse_options() {
     }
     ALWAYS_ASSERT(tpcc_worker_mixin::cold_whs.size() + tpcc_worker_mixin::hot_whs.size() ==
                   NumWarehouses());
+  }
+
+  if (FLAGS_tpcc_less_contention) {
+    // Less contention includes new_order_fast_id_gen
+    FLAGS_tpcc_new_order_fast_id_gen = true;
   }
 
   if (ermia::config::verbose) {

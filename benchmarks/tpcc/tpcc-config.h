@@ -38,6 +38,7 @@ DECLARE_uint32(tpcc_cold_item_pct);
 
 DECLARE_bool(tpcc_coro_local_wh);
 DECLARE_bool(tpcc_numa_local);
+DECLARE_bool(tpcc_less_contention);
 
 extern int g_wh_temperature;
 extern uint g_microbench_rows;  // this many rows

@@ -363,6 +363,12 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   if (r.IsAbort() or r._val == RC_FALSE) __abort_txn(r); \
 }
 
+#define TryCatchCondAbortOltpim(rc)                      \
+{                                                        \
+  rc_t r = rc;                                           \
+  if (r.IsAbort() or r._val == RC_FALSE) __abort_txn_oltpim(r); \
+}
+
 // combines the try...catch block with ALWAYS_ASSERT and allows abort.
 // The rc_is_abort case is there because sometimes we want to make
 // sure say, a get, succeeds, but the read itsef could also cause
