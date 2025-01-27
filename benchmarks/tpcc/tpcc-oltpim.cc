@@ -1265,7 +1265,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order_multiget(ermia::transa
       if (_rc._val != RC_TRUE) rc = _rc;
       else Decode(valptr, v_s[ol_number-1]);
     }
-    TryCatchCondAbortOltpim(rc);
+    TryCatchOltpim(rc);
   }
   // O.insertOID, S.update
   {
