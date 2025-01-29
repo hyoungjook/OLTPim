@@ -9,9 +9,9 @@
 
 DEFINE_uint64(ycsb_ops_per_tx, 10, "Number of operations to issue per transaction");
 DEFINE_uint64(ycsb_ops_per_hot_tx, 10, "Number of operations to issue per hot transaction");
-DEFINE_uint64(ycsb_ins_per_tx, 1, "Number of inserts per transaction");
-DEFINE_uint64(ycsb_update_per_tx, 1, "Number of updates per transaction");
-DEFINE_double(ycsb_hot_tx_percent, 0, "Percentage of hot transactions in the whole workload");
+DEFINE_uint64(ycsb_ins_per_tx, 10, "Number of inserts per transaction");
+DEFINE_uint64(ycsb_update_per_tx, 10, "Number of updates per transaction");
+DEFINE_double(ycsb_hot_tx_percent, 1, "Percentage of hot transactions in the whole workload");
 DEFINE_double(ycsb_remote_tx_percent, 0, "Percentage of remote transactions in the whole workload");
 DEFINE_uint64(ycsb_cold_ops_per_tx, 0, "Cold operations to issue per transaction");
 DEFINE_uint64(ycsb_rmw_additional_reads, 0, "Additional reads to issue in the RMW transaction");
@@ -54,7 +54,7 @@ YcsbWorkload YcsbWorkloadF('F', 0, 0, 0, 0, 100U);  // Workload F - 100% RMW
 // Extra workloads (not in spec)
 YcsbWorkload YcsbWorkloadG('G', 0, 0, 5U, 100U, 0);  // Workload G - 5% update, 95% scan
 YcsbWorkload YcsbWorkloadH('H', 0, 0, 0, 100U, 0);  // Workload H - 100% scan
-YcsbWorkload YcsbWorkloadI('I', 100U, 0, 0, 0, 0);  // Workload I - 100% insert
+YcsbWorkload YcsbWorkloadI('I', 50U, 50U, 0, 0, 0);  // Workload I - 50% insert, 50% read
 
 YcsbWorkload ycsb_workload = YcsbWorkloadC;
 

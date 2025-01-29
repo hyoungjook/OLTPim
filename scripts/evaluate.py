@@ -2,7 +2,6 @@ import argparse
 import glob
 import os
 from pathlib import Path
-import psutil
 import re
 import subprocess
 import tempfile
@@ -16,6 +15,8 @@ def parse_args():
         help='Path of the logging directory.')
     parser.add_argument('--hugetlb-size-gb', type=int, default=160,
         help='Size (GiB) of hugeTLB page to pre-allocate.')
+    parser.add_argument('--log-limit-size-gb', type=int, default=8,
+        help='Size (GiB) of log storage. Use 0 to disable log limiting.')
     parser.add_argument('--result-file', type=str, required=True,
         help='CSV result file to append the result.')
     parser.add_argument('--print-header', action='store_true',
@@ -24,11 +25,11 @@ def parse_args():
     parser.add_argument('--system', default=None, choices=['MosaicDB', 'OLTPim'],
         help='System to evaluate.')
     parser.add_argument('--workload', default=None, choices=[
-        'YCSB-A', 'YCSB-B', 'YCSB-C', 'TPC-C', 'TPC-CR'
+        'YCSB-A', 'YCSB-B', 'YCSB-C', 'YCSB-I', 'TPC-C', 'TPC-CR'
     ], help='Workload to evaluate.')
     parser.add_argument('--workload-size', default=None, type=int,
         help='Table size if YCSB. Scale factor if TPC-C.')
-    parser.add_argument('--seconds', type=int, default=20,
+    parser.add_argument('--seconds', type=int, default=60,
         help='Seconds to run the benchmark.')
     parser.add_argument('--threads', type=int, default=os.cpu_count(),
         help='Number of worker threads.')
@@ -82,9 +83,7 @@ def cleanup_log_dir(args):
     # Ensure tmpfs is mounted
     if args.logging:
         assert not os.path.ismount(args.log_dir)
-        total_mem = psutil.virtual_memory().total / (1024 * 1024 * 1024)
-        mem_for_log = int(total_mem - args.hugetlb_size_gb)
-        assert mem_for_log > 0
+        mem_for_log = 2 * args.log_limit_size_gb
         r = subprocess.run([
             'mount', '-t', 'tmpfs', 
             '-o', f'size={mem_for_log}G',
@@ -114,6 +113,7 @@ def common_options(args):
         f'-physical_workers_only={physical_workers_only}',
         f'-seconds={args.seconds}',
         f'-enable_gc={enable_gc}',
+        f'-gc_prob=1.0',
         '-arena_size_mb=1',
         '-measure_energy=1'
     ]
@@ -130,6 +130,9 @@ def log_options(args):
             '-null_log_during_init=1',
             '-pcommit=0'
         ]
+        if args.log_limit_size_gb > 0:
+            log_limit_per_thd = float(args.log_limit_size_gb) * 1024.0 / args.threads
+            opts += [f'-log_limit_mb={int(log_limit_per_thd)}']
     else:
         opts += [
             '-null_log_device=1',
@@ -139,20 +142,22 @@ def log_options(args):
 
 def ycsb_options(args):
     numa_local = 1 if args.numa_local_workload else 0
-    table_per_numa = args.workload_size // args.numa_nodes
+    table_size = args.workload_size // args.numa_nodes if numa_local else args.workload_size
     match args.workload:
         case 'YCSB-A': ycsb_type = 'A'
         case 'YCSB-B': ycsb_type = 'B'
         case 'YCSB-C': ycsb_type = 'C'
+        case 'YCSB-I': ycsb_type = 'I'
         case _: raise ValueError(f'Invalid workload={args.workload}')
     opts = [
         '-ycsb_ops_per_hot_tx=10',
         '-ycsb_update_per_tx=10',
+        '-ycsb_ins_per_tx=10',
         '-ycsb_hot_tx_percent=1.0',
         '-ycsb_read_tx_type=hybrid-coro',
         f'-ycsb_numa_local={numa_local}',
         f'-numa_spread={numa_local}',
-        f'-ycsb_hot_table_size={table_per_numa}',
+        f'-ycsb_hot_table_size={table_size}',
         f'-ycsb_workload={ycsb_type}'
     ]
     if args.system == 'OLTPim':
@@ -293,10 +298,9 @@ def print_header():
     csv_header = 'system,suffix,workload,workload_size,corobatchsize,' + \
         'log,NUMALocal,GC,Interleave,' + \
         'time(s),commits,aborts,p99(ms),' + \
-        'Ppkg(W),Pram(W),' + \
-        'CPUUtil,CPUTurboUtil,' + \
-        'BWdram.rd(MiB/s),BWdram.wr(MiB/s),' + \
-        'BWpim.rd(MiB/s),BWpim.wr(MiB/s),' + \
+        'Epkg(J),Eram(J),' + \
+        'dram.rd(MiB),dram.wr(MiB),' + \
+        'pim.rd(MiB),pim.wr(MiB),' + \
         'PIMUtil,PIMmramratio,PIMmramsize(B)' + \
         '\n'
     with open(args.result_file, 'w') as f:
@@ -307,10 +311,9 @@ def print_result(args, values):
         f"{args.coro_batch_size},{args.logging},{args.numa_local_workload}," + \
         f"{args.gc},{args.interleave}," + \
         f"{values['time(s)']},{values['commits']},{values['aborts']},{values['p99(ms)']}," + \
-        f"{values['power-pkg(W)']},{values['power-ram(W)']}," + \
-        f"{values['cpu-util']},{values['cpu-turbo-util']}," + \
-        f"{values['dram.rd(MiB/s)']},{values['dram.wr(MiB/s)']}," + \
-        f"{values['pim.rd(MiB/s)']},{values['pim.wr(MiB/s)']}," + \
+        f"{values['Epkg(J)']},{values['Eram(J)']}," + \
+        f"{values['dram.rd(MiB)']},{values['dram.wr(MiB)']}," + \
+        f"{values['pim.rd(MiB)']},{values['pim.wr(MiB)']}," + \
         f"{values['pim-util']},{values['pim-mram-ratio']},{values['pim-mram-size(B)']}" + \
         "\n"
     with open(args.result_file, 'a') as f:

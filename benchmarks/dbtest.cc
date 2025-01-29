@@ -141,7 +141,7 @@ DEFINE_uint64(pcommit_size_kb, PAGE_SIZE,
 DEFINE_bool(pcommit_thread, false,
             "Whether to use a dedicated pipelined committer thread.");
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
-DEFINE_double(gc_prob, 0.0, "GC probability on each update call.");
+DEFINE_double(gc_prob, 1.0, "GC probability on each update call.");
 DEFINE_bool(iouring_read_log, true,
             "Whether to use iouring to load versions from logs.");
 DEFINE_uint64(fetch_cold_tx_interval, 0, "The interval of fetching cold transactions measured by # of transactions");

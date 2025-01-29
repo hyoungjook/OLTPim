@@ -12,8 +12,8 @@ class ycsb_sequential_worker : public ycsb_base_worker {
  public:
   ycsb_sequential_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
                          const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                         spin_barrier *barrier_a, spin_barrier *barrier_b)
-    : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b) {
+                         spin_barrier *barrier_a, spin_barrier *barrier_b, std::atomic<uint64_t> *next_inserts)
+    : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b, next_inserts) {
   }
 
   virtual void MyWork(char *) override {

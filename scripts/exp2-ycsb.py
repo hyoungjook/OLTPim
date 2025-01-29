@@ -6,9 +6,14 @@ from matplotlib.ticker import FuncFormatter
 
 EXP_NAME = 'ycsb'
 SYSTEMS = ['MosaicDB', 'OLTPim']
-WORKLOADS = ['YCSB-C', 'YCSB-A']
+WORKLOADS = ['YCSB-C', 'YCSB-B', 'YCSB-A', 'YCSB-I']
 WORKLOAD_SIZES = [10 ** 6, 10 ** 7, 10 ** 8, 10 ** 9]
-GC_OPTS = {'YCSB-C': [True], 'YCSB-A': [False, True]}
+GC_OPTS = {
+    'YCSB-C': [True],
+    'YCSB-B': [True],
+    'YCSB-A': [False, True],
+    'YCSB-I': [True]
+}
 
 SIZE_TO_LABEL = {10**6: '1M', 10**7: '10M', 10**8: '100M', 10**9: '1B'}
 

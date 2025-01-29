@@ -17,7 +17,7 @@ def parse_args():
         help='Size (GiB) of hugeTLB page to pre-allocate.')
     parser.add_argument('--result-dir', type=str, required=True,
         help='Path of directory in which the CSV result file will be stored.')
-    parser.add_argument('--bench-seconds', type=int, default=20,
+    parser.add_argument('--bench-seconds', type=int, default=60,
         help='Seconds to run each benchmark.')
     parser.add_argument('--bench-threads', type=int, default=os.cpu_count(),
         help='Number of worker threads.')

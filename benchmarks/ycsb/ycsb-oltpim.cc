@@ -20,8 +20,8 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   ycsb_oltpim_worker(
       unsigned int worker_id, unsigned long seed, ermia::Engine *db,
       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-      spin_barrier *barrier_a, spin_barrier *barrier_b)
-      : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b) {
+      spin_barrier *barrier_a, spin_barrier *barrier_b, std::atomic<uint64_t> *next_inserts)
+      : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b, next_inserts) {
     if (FLAGS_ycsb_numa_local) {
       oltpim::engine::g_engine.optimize_for_numa_local_key();
     }
@@ -73,7 +73,8 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     if (FLAGS_ycsb_oltpim_multiget) {
       LOG_IF(FATAL,
              !(FLAGS_ycsb_ops_per_hot_tx == ops_per_hot_txn_const &&
-               FLAGS_ycsb_update_per_tx == ops_per_hot_txn_const))
+               FLAGS_ycsb_update_per_tx == ops_per_hot_txn_const &&
+               FLAGS_ycsb_ins_per_tx == ops_per_hot_txn_const))
           << "Recompile with matching ops_per_hot_txn_const in ycsb-oltpim.cc";
     }
 
@@ -93,7 +94,8 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     }
 
     if (ycsb_workload.insert_percent()) {
-      w.push_back(workload_desc("0-Insert", double(ycsb_workload.insert_percent()) / 100.0, nullptr, nullptr, TxnInsert));
+      w.push_back(workload_desc("0-Insert", double(ycsb_workload.insert_percent()) / 100.0, nullptr, nullptr,
+        (FLAGS_ycsb_oltpim_multiget ? TxnInsertMultiget : TxnInsert)));
     }
 
     if (ycsb_workload.update_percent()) {
@@ -197,6 +199,10 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     return static_cast<ycsb_oltpim_worker *>(w)->txn_insert(txn, idx);
   }
 
+  static ermia::coro::task<rc_t> TxnInsertMultiget(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
+    return static_cast<ycsb_oltpim_worker *>(w)->txn_insert_multiget(txn, idx);
+  }
+
   static ermia::coro::task<rc_t> TxnHotUpdate(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
     return static_cast<ycsb_oltpim_worker *>(w)->txn_hot_update(txn, idx);
   }
@@ -298,7 +304,41 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   }
 
   ermia::coro::task<rc_t> txn_insert(ermia::transaction *txn, uint32_t idx) {
-    ALWAYS_ASSERT(false);
+    ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
+    for (int i = 0; i < FLAGS_ycsb_ins_per_tx; ++i) {
+      *(char *)v.p = 'a';
+      auto rc = co_await table_index->pim_InsertRecord(txn, gen_new_key(), v);
+      TryCatchOltpim(rc);
+    }
+
+#ifndef CORO_BATCH_COMMIT
+    rc_t rc = co_await txn->oltpim_commit();
+    TryCatchOltpim(rc);
+#endif
+    co_return {RC_TRUE};
+  }
+
+  ermia::coro::task<rc_t> txn_insert_multiget(ermia::transaction *txn, uint32_t idx) {
+    oltpim::request_insert reqs[ops_per_hot_txn_const];
+    ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
+    for (int j = 0; j < FLAGS_ycsb_ins_per_tx; ++j) {
+      *(char *)v.p = 'a';
+      table_index->pim_InsertRecordBegin(txn, gen_new_key(), v, &reqs[j]);
+    }
+    rc_t rc{RC_TRUE};
+    for (int j = 0; j < FLAGS_ycsb_ins_per_tx; ++j) {
+      // Txn should wait until all requests are done
+      // because the engine is using the reqs stack variable
+      // and it is released if this function returns.
+      rc_t _rc = co_await table_index->pim_InsertRecordEnd(txn, &reqs[j]);
+      if (_rc._val != RC_TRUE) rc = _rc;
+    }
+    TryCatchOltpim(rc);
+
+#ifndef CORO_BATCH_COMMIT
+    rc = co_await txn->oltpim_commit();
+    TryCatchOltpim(rc);
+#endif
     co_return {RC_TRUE};
   }
 
