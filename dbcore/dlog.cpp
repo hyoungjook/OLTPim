@@ -123,6 +123,16 @@ void tls_log::initialize(const char *log_dir, uint32_t log_id, uint32_t node,
   segment_size = max_segment_mb * uint32_t{1024 * 1024};
   LOG_IF(FATAL, segment_size > SEGMENT_MAX_SIZE) << "Unable to allocate log buffer";
 
+  if (config::log_limit_mb > 0) {
+    log_limit_size = config::log_limit_mb * uint32_t{1024 * 1024};
+    if (log_limit_size >= segment_size) {
+      std::cerr << "WARNING: log_limit has no effect if larger than log_segment." << std::endl;
+    }
+  }
+  else {
+    log_limit_size = 2 * segment_size;
+  }
+
   logbuf_offset = 0;
   active_logbuf = logbuf[0];
   durable_lsn = 0;
@@ -266,6 +276,11 @@ void tls_log::issue_flush(const char *buf, uint64_t size) {
 
   struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
   LOG_IF(FATAL, !sqe);
+
+  if (current_segment()->size + size >= log_limit_size) {
+    current_segment()->size = 0;
+    current_segment()->expected_size = 0;
+  }
 
   io_uring_prep_write(sqe, current_segment()->fd, buf, size, current_segment()->size);
 

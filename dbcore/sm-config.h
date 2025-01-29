@@ -36,6 +36,7 @@ extern bool enable_chkpt;
 extern uint64_t chkpt_interval;
 extern uint64_t log_buffer_mb;
 extern uint64_t log_segment_mb;
+extern uint64_t log_limit_mb;
 extern std::string log_dir;
 extern bool print_cpu_util;
 extern uint32_t arena_size_mb;

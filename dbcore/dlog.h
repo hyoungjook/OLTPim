@@ -109,6 +109,9 @@ private:
   // Segment size
   uint64_t segment_size;
 
+  // Log size limit
+  uint64_t log_limit_size;
+
   // All segments belonging to this partition. The last one
   // segments[segments.size()-1] is the currently open segment
   std::vector<segment> segments;

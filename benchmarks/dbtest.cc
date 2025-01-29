@@ -77,6 +77,9 @@ DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");
 DEFINE_uint64(log_buffer_mb, 8, "Log buffer size in MB.");
 DEFINE_uint64(log_segment_mb, 16384, "Log segment size in MB.");
 DEFINE_bool(log_direct_io, true, "Whether to use O_DIRECT for dlog.");
+DEFINE_uint64(log_limit_mb, 0, "Limit per-thread log size. "
+              "If log exceeds this size, overwrite the log from offset 0 "
+              "to limit the log size usage. Set 0 to disable.");
 DEFINE_bool(phantom_prot, false, "Whether to enable phantom protection.");
 DEFINE_bool(print_cpu_util, false, "Whether to print CPU utilization.");
 DEFINE_bool(enable_perf, false,
@@ -186,6 +189,7 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
   ermia::config::log_dir = FLAGS_log_data_dir;
   ermia::config::log_buffer_mb = FLAGS_log_buffer_mb;
   ermia::config::log_segment_mb = FLAGS_log_segment_mb;
+  ermia::config::log_limit_mb = FLAGS_log_limit_mb;
   ermia::config::log_direct_io = FLAGS_log_direct_io;
 
   if (FLAGS_log_direct_io) {
@@ -339,8 +343,8 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
   std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb
             << std::endl;
   std::cerr << "  log-dir           : " << ermia::config::log_dir << std::endl;
-  std::cerr << "  log-segment-mb    : " << ermia::config::log_segment_mb
-            << std::endl;
+  std::cerr << "  log-segment-mb    : " << ermia::config::log_segment_mb << std::endl;
+  std::cerr << "  log-limit-mb    : " << ermia::config::log_limit_mb << std::endl;
   std::cerr << "  log-direct-io     : " << ermia::config::log_direct_io << std::endl;
   std::cerr << "  masstree_internal_node_size: "
             << ermia::ConcurrentMasstree::InternalNodeSize() << std::endl;
