@@ -60,6 +60,7 @@ extern bool parallel_loading;
 extern bool retry_aborted_transactions;
 extern int backoff_aborted_transactions;
 extern int enable_gc;
+extern double gc_prob;
 extern bool null_log_device;
 extern bool null_log_during_init;
 extern bool truncate_at_bench_start;

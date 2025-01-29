@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <future>
+#include <random>
 
 #include "sm-alloc.h"
 //#include "sm-chkpt.h"
@@ -93,7 +94,25 @@ void prepare_node_memory() {
   }
 }
 
+struct CACHE_ALIGNED gc_rand {
+  static constexpr uint32_t MOD = 128;
+  uint32_t r;
+  gc_rand() {
+    std::random_device rd;
+    do {r = rd();} while (r == 0);
+  }
+  double next() {
+    // xorshift-32
+    r ^= r << 13;
+    r ^= r >> 17;
+    r ^= r << 5;
+    return (double)(r % MOD) / MOD;
+  }
+};
+thread_local gc_rand gc_r;
+
 void gc_version_chain(fat_ptr *oid_entry) {
+  if (!(gc_r.next() < config::gc_prob)) return;
   fat_ptr ptr = *oid_entry;
   Object *cur_obj = (Object *)ptr.offset();
   if (!cur_obj) {

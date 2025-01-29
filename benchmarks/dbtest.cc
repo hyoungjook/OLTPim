@@ -138,6 +138,7 @@ DEFINE_uint64(pcommit_size_kb, PAGE_SIZE,
 DEFINE_bool(pcommit_thread, false,
             "Whether to use a dedicated pipelined committer thread.");
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
+DEFINE_double(gc_prob, 0.0, "GC probability on each update call.");
 DEFINE_bool(iouring_read_log, true,
             "Whether to use iouring to load versions from logs.");
 DEFINE_uint64(fetch_cold_tx_interval, 0, "The interval of fetching cold transactions measured by # of transactions");
@@ -263,6 +264,7 @@ void bench_main(int argc, char **argv, std::function<void(ermia::Engine *)> test
   ermia::config::chkpt_interval = FLAGS_chkpt_interval;
   ermia::config::parallel_loading = FLAGS_parallel_loading;
   ermia::config::enable_gc = FLAGS_enable_gc;
+  ermia::config::gc_prob = FLAGS_gc_prob;
   ermia::config::iouring_read_log = FLAGS_iouring_read_log;
   ermia::config::fetch_cold_tx_interval = FLAGS_fetch_cold_tx_interval;
 

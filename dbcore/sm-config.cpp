@@ -37,6 +37,7 @@ bool quick_bench_start = false;
 int backoff_aborted_transactions = 0;
 int numa_nodes = 0;
 int enable_gc = 0;
+double gc_prob = 0.0;
 std::string tmpfs_dir("/dev/shm");
 int enable_safesnap = 0;
 int enable_ssi_read_only_opt = 0;
