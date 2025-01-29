@@ -82,7 +82,8 @@ void ycsb_create_db(ermia::Engine *db) {
 }
 
 void ycsb_table_loader::load() {
-  uint32_t nloaders = std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+  uint32_t nloaders = std::thread::hardware_concurrency();
+  ALWAYS_ASSERT(loader_id < nloaders);
   if (!FLAGS_ycsb_numa_local) {
     LOG(INFO) << "Loading user table, " << FLAGS_ycsb_hot_table_size << " hot records, " << FLAGS_ycsb_cold_table_size << " cold records.";
     uint64_t hot_to_insert = FLAGS_ycsb_hot_table_size / nloaders;
@@ -108,7 +109,7 @@ void ycsb_table_loader::load() {
 
 void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name, 
     uint64_t hot_to_insert, uint64_t hot_start_key, uint64_t cold_to_insert, uint64_t cold_start_key) {
-  uint32_t nloaders = std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+  uint32_t nloaders = std::thread::hardware_concurrency();
   int64_t to_insert = hot_to_insert + cold_to_insert;
 
   uint64_t kBatchSize = 256;
@@ -186,6 +187,7 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
   }
   while (loaders_barrier);
 
+#ifndef NDEBUG
   // Verify inserted values
   for (uint64_t i_begin = 0; i_begin < hot_to_insert; i_begin += kBatchSize) {
     txn = db->NewTransaction(0, *arena, txn_buf());
@@ -245,6 +247,7 @@ void ycsb_table_loader::do_load(ermia::OrderedIndex *tbl, std::string table_name
       }
     }
   }
+#endif
 #endif
 
   if (ermia::config::verbose) {
