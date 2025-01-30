@@ -6,13 +6,27 @@ from matplotlib.ticker import FuncFormatter
 
 EXP_NAME = 'ycsb'
 SYSTEMS = ['MosaicDB', 'OLTPim']
-WORKLOADS = ['YCSB-C', 'YCSB-B', 'YCSB-A', 'YCSB-I']
-WORKLOAD_SIZES = [10 ** 6, 10 ** 7, 10 ** 8, 10 ** 9]
+WORKLOADS = [
+    'YCSB-C', 'YCSB-B', 'YCSB-A',
+    'YCSB-I1', 'YCSB-I2', 'YCSB-I3', 'YCSB-I4',
+]
+WORKLOAD_SIZES = {
+    'YCSB-C': [10 ** 6, 10 ** 7, 10 ** 8, 10 ** 9],
+    'YCSB-B': [10 ** 6, 10 ** 7, 10 ** 8, 10 ** 9],
+    'YCSB-A': [10 ** 6, 10 ** 7, 10 ** 8, 10 ** 9],
+    'YCSB-I1': [10 ** 8],
+    'YCSB-I2': [10 ** 8],
+    'YCSB-I3': [10 ** 8],
+    'YCSB-I4': [10 ** 8],
+}
 GC_OPTS = {
     'YCSB-C': [True],
     'YCSB-B': [True],
     'YCSB-A': [False, True],
-    'YCSB-I': [True]
+    'YCSB-I1': [True],
+    'YCSB-I2': [True],
+    'YCSB-I3': [True],
+    'YCSB-I4': [True],
 }
 
 SIZE_TO_LABEL = {10**6: '1M', 10**7: '10M', 10**8: '100M', 10**9: '1B'}
@@ -222,9 +236,8 @@ if __name__ == "__main__":
         create_result_file(args, EXP_NAME)
         print_header(args)
         for workload in WORKLOADS:
-            for workload_size in WORKLOAD_SIZES:
-                gc_opts = GC_OPTS[workload]
-                for gc in gc_opts:
+            for workload_size in WORKLOAD_SIZES[workload]:
+                for gc in GC_OPTS[workload]:
                     for system in SYSTEMS:
                         run(args, system, workload, workload_size, no_gc=(not gc))
     else:

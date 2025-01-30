@@ -54,7 +54,10 @@ YcsbWorkload YcsbWorkloadF('F', 0, 0, 0, 0, 100U);  // Workload F - 100% RMW
 // Extra workloads (not in spec)
 YcsbWorkload YcsbWorkloadG('G', 0, 0, 5U, 100U, 0);  // Workload G - 5% update, 95% scan
 YcsbWorkload YcsbWorkloadH('H', 0, 0, 0, 100U, 0);  // Workload H - 100% scan
-YcsbWorkload YcsbWorkloadI('I', 50U, 50U, 0, 0, 0);  // Workload I - 50% insert, 50% read
+YcsbWorkload YcsbWorkloadI1('i', 25U, 100U, 0, 0, 0);  // Workload I1 - 25% insert, 75% read
+YcsbWorkload YcsbWorkloadI2('j', 50U, 100U, 0, 0, 0);  // Workload I2 - 50% insert, 50% read
+YcsbWorkload YcsbWorkloadI3('k', 75U, 100U, 0, 0, 0);  // Workload I3 - 75% insert, 25% read
+YcsbWorkload YcsbWorkloadI4('I', 100U, 0, 0, 0, 0);  // Workload I4 - 100% insert
 
 YcsbWorkload ycsb_workload = YcsbWorkloadC;
 
@@ -298,8 +301,14 @@ void ycsb_parse_options() {
     ycsb_workload = YcsbWorkloadG;
   } else if (FLAGS_ycsb_workload == "H") {
     ycsb_workload = YcsbWorkloadH;
-  } else if (FLAGS_ycsb_workload == "I") {
-    ycsb_workload = YcsbWorkloadI;
+  } else if (FLAGS_ycsb_workload == "I1") {
+    ycsb_workload = YcsbWorkloadI1;
+  } else if (FLAGS_ycsb_workload == "I2") {
+    ycsb_workload = YcsbWorkloadI2;
+  } else if (FLAGS_ycsb_workload == "I3") {
+    ycsb_workload = YcsbWorkloadI3;
+  } else if (FLAGS_ycsb_workload == "I4") {
+    ycsb_workload = YcsbWorkloadI4;
   } else {
     std::cerr << "Wrong workload type: " << FLAGS_ycsb_workload << std::endl;
     abort();

@@ -25,7 +25,9 @@ def parse_args():
     parser.add_argument('--system', default=None, choices=['MosaicDB', 'OLTPim'],
         help='System to evaluate.')
     parser.add_argument('--workload', default=None, choices=[
-        'YCSB-A', 'YCSB-B', 'YCSB-C', 'YCSB-I', 'TPC-C', 'TPC-CR'
+        'YCSB-A', 'YCSB-B', 'YCSB-C',
+        'YCSB-I1', 'YCSB-I2', 'YCSB-I3', 'YCSB-I4',
+        'TPC-C', 'TPC-CR'
     ], help='Workload to evaluate.')
     parser.add_argument('--workload-size', default=None, type=int,
         help='Table size if YCSB. Scale factor if TPC-C.')
@@ -147,7 +149,10 @@ def ycsb_options(args):
         case 'YCSB-A': ycsb_type = 'A'
         case 'YCSB-B': ycsb_type = 'B'
         case 'YCSB-C': ycsb_type = 'C'
-        case 'YCSB-I': ycsb_type = 'I'
+        case 'YCSB-I1': ycsb_type = 'I1'
+        case 'YCSB-I2': ycsb_type = 'I2'
+        case 'YCSB-I3': ycsb_type = 'I3'
+        case 'YCSB-I4': ycsb_type = 'I4'
         case _: raise ValueError(f'Invalid workload={args.workload}')
     opts = [
         '-ycsb_ops_per_hot_tx=10',
