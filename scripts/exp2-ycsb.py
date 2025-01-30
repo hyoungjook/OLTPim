@@ -28,27 +28,67 @@ GC_OPTS = {
     'YCSB-I3': [True],
     'YCSB-I4': [True],
 }
+BENCH_SECONDS = lambda workload, size: \
+    30 if (workload == 'YCSB-A' and size == 10**9) else 60
+HUGETLB_SIZE_GB = 180
 
 SIZE_TO_LABEL = {10**6: '1M', 10**7: '10M', 10**8: '100M', 10**9: '1B'}
+INS_TO_LABEL = {0.25: '25%', 0.5: '50%', 0.75: '75%', 1.0: '100%'}
 
 def plot(args):
-    ycsbc_size = {MOSAICDB: [], OLTPIM: []}
-    ycsbc_tput = {MOSAICDB: [], OLTPIM: []}
-    ycsbc_p99 = {MOSAICDB: [], OLTPIM: []}
-    ycsbc_dramrd = {MOSAICDB: [], OLTPIM: []}
-    ycsbc_dramwr = {MOSAICDB: [], OLTPIM: []}
-    ycsbc_pimrd = {MOSAICDB: [], OLTPIM: []}
-    ycsbc_pimwr = {MOSAICDB: [], OLTPIM: []}
-    ycsba_size = {MOSAICDB: [], OLTPIM: []}
-    ycsba_tput = {MOSAICDB: [], OLTPIM: []}
-    ycsba_p99 = {MOSAICDB: [], OLTPIM: []}
-    ycsba_dramrd = {MOSAICDB: [], OLTPIM: []}
-    ycsba_dramwr = {MOSAICDB: [], OLTPIM: []}
-    ycsba_pimrd = {MOSAICDB: [], OLTPIM: []}
-    ycsba_pimwr = {MOSAICDB: [], OLTPIM: []}
-    ycsba_nogc_size = {MOSAICDB: [], OLTPIM: []}
-    ycsba_nogc_tput = {MOSAICDB: [], OLTPIM: []}
-    ycsba_nogc_p99 = {MOSAICDB: [], OLTPIM: []}
+    ycsbc = {
+        'size': {MOSAICDB: [], OLTPIM: []},
+        'tput': {MOSAICDB: [], OLTPIM: []},
+        'p99': {MOSAICDB: [], OLTPIM: []},
+        'dramrd': {MOSAICDB: [], OLTPIM: []},
+        'dramwr': {MOSAICDB: [], OLTPIM: []},
+        'pimrd': {MOSAICDB: [], OLTPIM: []},
+        'pimwr': {MOSAICDB: [], OLTPIM: []}
+    }
+    ycsbb = {
+        'size': {MOSAICDB: [], OLTPIM: []},
+        'tput': {MOSAICDB: [], OLTPIM: []},
+        'p99': {MOSAICDB: [], OLTPIM: []},
+        'dramrd': {MOSAICDB: [], OLTPIM: []},
+        'dramwr': {MOSAICDB: [], OLTPIM: []},
+        'pimrd': {MOSAICDB: [], OLTPIM: []},
+        'pimwr': {MOSAICDB: [], OLTPIM: []}
+    }
+    ycsba = {
+        'size': {MOSAICDB: [], OLTPIM: []},
+        'tput': {MOSAICDB: [], OLTPIM: []},
+        'p99': {MOSAICDB: [], OLTPIM: []},
+        'dramrd': {MOSAICDB: [], OLTPIM: []},
+        'dramwr': {MOSAICDB: [], OLTPIM: []},
+        'pimrd': {MOSAICDB: [], OLTPIM: []},
+        'pimwr': {MOSAICDB: [], OLTPIM: []}
+    }
+    ycsba_nogc = {
+        'size': {MOSAICDB: [], OLTPIM: []},
+        'tput': {MOSAICDB: [], OLTPIM: []},
+        'p99': {MOSAICDB: [], OLTPIM: []},
+        'dramrd': {MOSAICDB: [], OLTPIM: []},
+        'dramwr': {MOSAICDB: [], OLTPIM: []},
+        'pimrd': {MOSAICDB: [], OLTPIM: []},
+        'pimwr': {MOSAICDB: [], OLTPIM: []}
+    }
+    ycsbi = {
+        'ins-ratio': {MOSAICDB: [], OLTPIM: []},
+        'tput': {MOSAICDB: [], OLTPIM: []},
+        'p99': {MOSAICDB: [], OLTPIM: []},
+        'dramrd': {MOSAICDB: [], OLTPIM: []},
+        'dramwr': {MOSAICDB: [], OLTPIM: []},
+        'pimrd': {MOSAICDB: [], OLTPIM: []},
+        'pimwr': {MOSAICDB: [], OLTPIM: []}
+    }
+    def append_to_stats(workload_stats, row):
+        
+        workload_stats['tput'][system].append(float(row['commits']) / float(row['time(s)']) / 1000000)
+        workload_stats['p99'][system].append(float(row['p99(ms)']))
+        workload_stats['dramrd'][system].append(float(row['dram.rd(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
+        workload_stats['dramwr'][system].append(float(row['dram.wr(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
+        workload_stats['pimrd'][system].append(float(row['pim.rd(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
+        workload_stats['pimwr'][system].append(float(row['pim.wr(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
     for system in SYSTEMS:
         with open(result_file_path(args, EXP_NAME, system), 'r') as f:
             reader = csv.DictReader(f)
@@ -56,178 +96,121 @@ def plot(args):
                 system = row['system']
                 workload = row['workload']
                 if workload == 'YCSB-C':
-                    ycsbc_size[system] += [int(row['workload_size'])]
-                    ycsbc_tput[system] += [float(row['tput(TPS)']) / 1000000]
-                    ycsbc_p99[system] += [float(row['p99(ms)'])]
-                    ycsbc_dramrd[system] += [float(row['BWdram.rd(MiB/s)']) / 1024]
-                    ycsbc_dramwr[system] += [float(row['BWdram.wr(MiB/s)']) / 1024]
-                    ycsbc_pimrd[system] += [float(row['BWpim.rd(MiB/s)']) / 1024]
-                    ycsbc_pimwr[system] += [float(row['BWpim.wr(MiB/s)']) / 1024]
-                if workload == 'YCSB-A':
+                    ycsbc['size'][system].append(int(row['workload_size']))
+                    append_to_stats(ycsbc, row)
+                elif workload == 'YCSB-B':
+                    ycsbb['size'][system].append(int(row['workload_size']))
+                    append_to_stats(ycsbb, row)
+                elif workload == 'YCSB-A':
                     if row['GC'] == 'True':
-                        ycsba_size[system] += [int(row['workload_size'])]
-                        ycsba_tput[system] += [float(row['tput(TPS)']) / 1000000]
-                        ycsba_p99[system] += [float(row['p99(ms)'])]
-                        ycsba_dramrd[system] += [float(row['BWdram.rd(MiB/s)']) / 1024]
-                        ycsba_dramwr[system] += [float(row['BWdram.wr(MiB/s)']) / 1024]
-                        ycsba_pimrd[system] += [float(row['BWpim.rd(MiB/s)']) / 1024]
-                        ycsba_pimwr[system] += [float(row['BWpim.wr(MiB/s)']) / 1024]
+                        ycsba['size'][system].append(int(row['workload_size']))
+                        append_to_stats(ycsba, row)
                     else:
-                        ycsba_nogc_size[system] += [int(row['workload_size'])]
-                        ycsba_nogc_tput[system] += [float(row['tput(TPS)']) / 1000000]
-                        ycsba_nogc_p99[system] += [float(row['p99(ms)'])]
+                        ycsba_nogc['size'][system].append(int(row['workload_size']))
+                        append_to_stats(ycsba_nogc, row)
+                elif workload == 'YCSB-I1':
+                    ycsbi['ins-ratio'][system].append(0.25)
+                    append_to_stats(ycsbi, row)
+                elif workload == 'YCSB-I2':
+                    ycsbi['ins-ratio'][system].append(0.5)
+                    append_to_stats(ycsbi, row)
+                elif workload == 'YCSB-I3':
+                    ycsbi['ins-ratio'][system].append(0.75)
+                    append_to_stats(ycsbi, row)
+                elif workload == 'YCSB-I4':
+                    ycsbi['ins-ratio'][system].append(1.0)
+                    append_to_stats(ycsbi, row)
 
-    # Readonly performance
-    fig, axes = plt.subplots(2, 2, figsize= (5.5, 4), constrained_layout=True)
+    # Overall
+    fig, axes = plt.subplots(2, 4, figsize=(8, 4), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
-    x_indices = range(len(ycsbc_size[MOSAICDB]))
-    x_labels = [SIZE_TO_LABEL[ycsbc_size[MOSAICDB][x]] for x in x_indices]
-    width=0.25
-    mosaic_indices = [x - width/2 for x in x_indices]
-    oltpim_indices = [x + width/2 for x in x_indices]
-    axes[0][0].plot(x_indices, ycsbc_tput[MOSAICDB], color='black', linestyle='-', marker='o', label=MOSAICDB)
-    axes[0][0].plot(x_indices, ycsbc_tput[OLTPIM], color='red', linestyle='-', marker='o', label=OLTPIM)
-    axes[0][0].set_xticks(x_indices)
-    axes[0][0].set_xticklabels(x_labels)
-    axes[0][0].set_xlabel('')
-    axes[0][0].set_ylabel('Throughput (MTPS)')
-    axes[0][0].yaxis.set_major_formatter(formatter)
-    axes[0][0].minorticks_off()
-    axes[0][0].set_ylim(bottom=0)
-    axes[0][0].legend(loc='lower center')
-    axes[0][1].bar(mosaic_indices, ycsbc_p99[MOSAICDB], width, color='white', edgecolor='black', hatch='\\\\', label=MOSAICDB)
-    axes[0][1].bar(oltpim_indices, ycsbc_p99[OLTPIM], width, color='white', edgecolor='red', hatch='//', label=OLTPIM)
-    axes[0][1].set_xticks(x_indices)
-    axes[0][1].set_xticklabels(x_labels)
-    axes[0][1].set_xlabel('')
-    axes[0][1].set_ylabel('P99 Latency (ms)')
-    axes[0][1].set_yscale('log')
-    axes[0][1].yaxis.set_major_formatter(formatter)
-    axes[0][1].minorticks_off()
-    axes[0][1].legend(loc='center')
-    bottoms = [0 for _ in x_indices]
-    axes[1][0].bar(mosaic_indices, ycsbc_dramrd[MOSAICDB], width, bottom=bottoms, color='lightgreen', edgecolor='black', hatch='\\\\')
-    bottoms = [b + n for b, n in zip(bottoms, ycsbc_dramrd[MOSAICDB])]
-    axes[1][0].bar(mosaic_indices, ycsbc_dramwr[MOSAICDB], width, bottom=bottoms, color='green', edgecolor='black', hatch='\\\\')
-    bottoms = [0 for _ in x_indices]
-    axes[1][0].bar(oltpim_indices, ycsbc_dramrd[OLTPIM], width, bottom=bottoms, color='lightgreen', edgecolor='red', hatch='//')
-    bottoms = [b + n for b, n in zip(bottoms, ycsbc_dramrd[OLTPIM])]
-    axes[1][0].bar(oltpim_indices, ycsbc_dramwr[OLTPIM], width, bottom=bottoms, color='green', edgecolor='red', hatch='//')
-    bottoms = [b + n for b, n in zip(bottoms, ycsbc_dramwr[OLTPIM])]
-    axes[1][0].bar(oltpim_indices, ycsbc_pimrd[OLTPIM], width, bottom=bottoms, color='lightgrey', edgecolor='red', hatch='//')
-    bottoms = [b + n for b, n in zip(bottoms, ycsbc_pimrd[OLTPIM])]
-    axes[1][0].bar(oltpim_indices, ycsbc_pimwr[OLTPIM], width, bottom=bottoms, color='grey', edgecolor='red', hatch='//')
-    axes[1][0].set_xticks(x_indices)
-    axes[1][0].set_xticklabels(x_labels)
-    axes[1][0].set_xlabel('')
-    axes[1][0].set_ylabel('Far-Memory Bandwidth (GiB/s)')
-    axes[1][0].set_xlim(-0.5, len(x_indices) - 0.5)
-    axes[1][0].yaxis.set_major_formatter(formatter)
-    axes[1][0].minorticks_off()
-    axes[1][0].set_ylim(bottom=0)
-    patch_handles = [
-        mpatch.Patch(color='lightgreen', label='DRAM.Rd'),
-        mpatch.Patch(color='green', label='DRAM.Wr'),
-        mpatch.Patch(color='lightgrey', label='PIM.Rd'),
-        mpatch.Patch(color='grey', label='PIM.Wr')
-    ]
-    axes[1][0].legend(handles=patch_handles, loc='upper left')
-    ycsbc_tpbw = {
-        MOSAICDB: [1000.0 * mtps / (mbps0 + mbps1) for mtps, mbps0, mbps1 in zip(
-            ycsbc_tput[MOSAICDB], ycsbc_dramrd[MOSAICDB], ycsbc_dramwr[MOSAICDB]
-        )],
-        OLTPIM: [1000.0 * mtps / (mbps0 + mbps1 + mbps2 + mbps3) for mtps, mbps0, mbps1, mbps2, mbps3 in zip(
-            ycsbc_tput[OLTPIM], ycsbc_dramrd[OLTPIM], ycsbc_dramwr[OLTPIM], ycsbc_pimrd[OLTPIM], ycsbc_pimwr[OLTPIM]
-        )]
-    }
-    axes[1][1].bar(mosaic_indices, ycsbc_tpbw[MOSAICDB], width, color='white', edgecolor='black', hatch='\\\\', label=MOSAICDB)
-    axes[1][1].bar(oltpim_indices, ycsbc_tpbw[OLTPIM], width, color='white', edgecolor='red', hatch='//', label=OLTPIM)
-    axes[1][1].set_xticks(x_indices)
-    axes[1][1].set_xticklabels(x_labels)
-    axes[1][1].set_xlabel('')
-    axes[1][1].set_ylabel('Txn per Traffic (KTxn/MiB)')
-    axes[1][1].set_xlim(-0.5, len(x_indices) - 0.5)
-    axes[1][1].yaxis.set_major_formatter(formatter)
-    axes[1][1].minorticks_off()
-    axes[1][1].set_ylim(bottom=0)
-    fig.supxlabel('Table Size')
-    plt.savefig(result_plot_path(args, EXP_NAME, '-readonly'))
-    plt.close(fig)
+    x_indices = range(len(ycsbc['size'][MOSAICDB]))
+    size_labels = [SIZE_TO_LABEL[ycsbc['size'][MOSAICDB][x]] for x in x_indices]
+    ycsbi_labels = [INS_TO_LABEL[ycsbi['ins-ratio'][MOSAICDB][x]] for x in x_indices]
 
-    # Update
-    fig, axes = plt.subplots(2, 2, figsize= (5.5, 4), constrained_layout=True)
-    formatter = FuncFormatter(lambda x, _: f'{x:g}')
-    x_indices = range(len(ycsba_size[MOSAICDB]))
-    x_labels = [SIZE_TO_LABEL[ycsba_size[MOSAICDB][x]] for x in x_indices]
-    axes[0][0].plot(x_indices, ycsba_nogc_tput[MOSAICDB], color='grey', linestyle='--', marker='*', label=MOSAICDB + ' (no GC)')
-    axes[0][0].plot(x_indices, ycsba_tput[MOSAICDB], color='black', linestyle='-', marker='o', label=MOSAICDB)
-    axes[0][0].plot(x_indices, ycsba_nogc_tput[OLTPIM], color='pink', linestyle='--', marker='*', label=OLTPIM + ' (no GC)')
-    axes[0][0].plot(x_indices, ycsba_tput[OLTPIM], color='red', linestyle='-', marker='o', label=OLTPIM)
-    axes[0][0].set_xticks(x_indices)
-    axes[0][0].set_xticklabels(x_labels)
-    axes[0][0].set_xlabel('')
+    tput_ylim = max(
+        ycsbc['tput'][MOSAICDB] + ycsbc['tput'][OLTPIM] +
+        ycsbb['tput'][MOSAICDB] + ycsbb['tput'][OLTPIM] +
+        ycsba['tput'][MOSAICDB] + ycsba['tput'][OLTPIM] +
+        ycsba_nogc['tput'][MOSAICDB] + ycsba_nogc['tput'][OLTPIM] +
+        ycsbi['tput'][MOSAICDB] + ycsbi['tput'][OLTPIM]
+    )
+    def tput_plot(axis, workload, indices, labels, title):
+        axis.plot(indices, workload['tput'][MOSAICDB], color='black', linestyle='-', marker='o', label=MOSAICDB)
+        axis.plot(indices, workload['tput'][OLTPIM], color='red', linestyle='-', marker='o', label=OLTPIM)
+        axis.set_xticks(indices)
+        axis.set_xticklabels('')
+        axis.set_xlabel('')
+        axis.yaxis.set_major_formatter(formatter)
+        axis.minorticks_off()
+        axis.set_ylim(bottom=0, top=tput_ylim * 1.1)
+        axis.title.set_text(title)
+    tput_plot(axes[0][0], ycsbc, x_indices, size_labels, 'YCSB-C')
+    tput_plot(axes[0][1], ycsbb, x_indices, size_labels, 'YCSB-B')
+    tput_plot(axes[0][2], ycsba, x_indices, size_labels, 'YCSB-A')
+    axes[0][2].plot(x_indices, ycsba_nogc['tput'][MOSAICDB], color='grey', linestyle='--', marker='*', label=MOSAICDB + ' (no GC)')
+    axes[0][2].plot(x_indices, ycsba_nogc['tput'][OLTPIM], color='pink', linestyle='--', marker='*', label=OLTPIM + ' (no GC)')
+    tput_plot(axes[0][3], ycsbi, x_indices, ycsbi_labels, 'YCSB-I')
     axes[0][0].set_ylabel('Throughput (MTPS)')
-    axes[0][0].yaxis.set_major_formatter(formatter)
-    axes[0][0].minorticks_off()
-    axes[0][0].set_ylim(bottom=0)
-    axes[0][0].legend(loc='lower center')
-    axes[0][1].bar(mosaic_indices, ycsba_p99[MOSAICDB], width, color='white', edgecolor='black', hatch='\\\\', label=MOSAICDB)
-    axes[0][1].bar(oltpim_indices, ycsba_p99[OLTPIM], width, color='white', edgecolor='red', hatch='//', label=OLTPIM)
-    axes[0][1].set_xticks(x_indices)
-    axes[0][1].set_xticklabels(x_labels)
-    axes[0][1].set_xlabel('')
-    axes[0][1].set_ylabel('P99 Latency (ms)')
-    axes[0][1].set_yscale('log')
-    axes[0][1].yaxis.set_major_formatter(formatter)
-    axes[0][1].minorticks_off()
-    axes[0][1].legend(loc='center')
-    bottoms = [0 for _ in x_indices]
-    axes[1][0].bar(mosaic_indices, ycsba_dramrd[MOSAICDB], width, bottom=bottoms, color='lightgreen', edgecolor='black', hatch='\\\\')
-    bottoms = [b + n for b, n in zip(bottoms, ycsba_dramrd[MOSAICDB])]
-    axes[1][0].bar(mosaic_indices, ycsba_dramwr[MOSAICDB], width, bottom=bottoms, color='green', edgecolor='black', hatch='\\\\')
-    bottoms = [0 for _ in x_indices]
-    axes[1][0].bar(oltpim_indices, ycsba_dramrd[OLTPIM], width, bottom=bottoms, color='lightgreen', edgecolor='red', hatch='//')
-    bottoms = [b + n for b, n in zip(bottoms, ycsba_dramrd[OLTPIM])]
-    axes[1][0].bar(oltpim_indices, ycsba_dramwr[OLTPIM], width, bottom=bottoms, color='green', edgecolor='red', hatch='//')
-    bottoms = [b + n for b, n in zip(bottoms, ycsba_dramwr[OLTPIM])]
-    axes[1][0].bar(oltpim_indices, ycsba_pimrd[OLTPIM], width, bottom=bottoms, color='lightgrey', edgecolor='red', hatch='//')
-    bottoms = [b + n for b, n in zip(bottoms, ycsba_pimrd[OLTPIM])]
-    axes[1][0].bar(oltpim_indices, ycsba_pimwr[OLTPIM], width, bottom=bottoms, color='grey', edgecolor='red', hatch='//')
-    axes[1][0].set_xticks(x_indices)
-    axes[1][0].set_xticklabels(x_labels)
-    axes[1][0].set_xlabel('')
-    axes[1][0].set_ylabel('Far-Memory Bandwidth (GiB/s)')
-    axes[1][0].set_xlim(-0.5, len(x_indices) - 0.5)
-    axes[1][0].yaxis.set_major_formatter(formatter)
-    axes[1][0].minorticks_off()
-    axes[1][0].set_ylim(bottom=0)
-    patch_handles = [
-        mpatch.Patch(color='lightgreen', label='DRAM.Rd'),
-        mpatch.Patch(color='green', label='DRAM.Wr'),
-        mpatch.Patch(color='lightgrey', label='PIM.Rd'),
-        mpatch.Patch(color='grey', label='PIM.Wr')
+    axes[0][1].set_yticklabels('')
+    axes[0][2].set_yticklabels('')
+    axes[0][3].set_yticklabels('')
+
+    dram_ylim = max(
+        [dr + dw for dr, dw in zip(ycsbc['dramrd'][MOSAICDB], ycsbc['dramwr'][MOSAICDB])] +
+        [dr + dw for dr, dw in zip(ycsbb['dramrd'][MOSAICDB], ycsbb['dramwr'][MOSAICDB])] +
+        [dr + dw for dr, dw in zip(ycsba['dramrd'][MOSAICDB], ycsba['dramwr'][MOSAICDB])] +
+        [dr + dw for dr, dw in zip(ycsbi['dramrd'][MOSAICDB], ycsbi['dramwr'][MOSAICDB])] +
+        [dr + dw + pr + pw for dr, dw, pr, pw in zip(ycsbc['dramrd'][OLTPIM], ycsbc['dramwr'][OLTPIM], ycsbc['pimrd'][OLTPIM], ycsbc['pimwr'][OLTPIM])] +
+        [dr + dw + pr + pw for dr, dw, pr, pw in zip(ycsbb['dramrd'][OLTPIM], ycsbb['dramwr'][OLTPIM], ycsbb['pimrd'][OLTPIM], ycsbb['pimwr'][OLTPIM])] +
+        [dr + dw + pr + pw for dr, dw, pr, pw in zip(ycsba['dramrd'][OLTPIM], ycsba['dramwr'][OLTPIM], ycsba['pimrd'][OLTPIM], ycsba['pimwr'][OLTPIM])] +
+        [dr + dw + pr + pw for dr, dw, pr, pw in zip(ycsbi['dramrd'][OLTPIM], ycsbi['dramwr'][OLTPIM], ycsbi['pimrd'][OLTPIM], ycsbi['pimwr'][OLTPIM])]
+    )
+    def dram_plot(axis, workload, indices, labels):
+        width = 0.3
+        indices1 = [x - width/2 for x in indices]
+        indices2 = [x + width/2 for x in indices]
+        bottom = [0 for _ in indices]
+        axis.bar(indices1, workload['dramrd'][MOSAICDB], width, bottom=bottom, color='lightgreen', edgecolor='black', hatch='\\\\')
+        bottom = [b + n for b, n in zip(bottom, workload['dramrd'][MOSAICDB])]
+        axis.bar(indices1, workload['dramwr'][MOSAICDB], width, bottom=bottom, color='green', edgecolor='black', hatch='\\\\')
+        bottom = [0 for _ in indices]
+        axis.bar(indices2, workload['dramrd'][OLTPIM], width, bottom=bottom, color='lightgreen', edgecolor='red', hatch='//')
+        bottom = [b + n for b, n in zip(bottom, workload['dramrd'][OLTPIM])]
+        axis.bar(indices2, workload['dramwr'][OLTPIM], width, bottom=bottom, color='green', edgecolor='red', hatch='//')
+        bottom = [b + n for b, n in zip(bottom, workload['dramwr'][OLTPIM])]
+        axis.bar(indices2, workload['pimrd'][OLTPIM], width, bottom=bottom, color='lightgrey', edgecolor='red', hatch='//')
+        bottom = [b + n for b, n in zip(bottom, workload['pimrd'][OLTPIM])]
+        axis.bar(indices2, workload['pimwr'][OLTPIM], width, bottom=bottom, color='grey', edgecolor='red', hatch='//')
+        axis.set_xticks(indices)
+        axis.set_xticklabels(labels)
+        axis.set_xlabel('')
+        axis.yaxis.set_major_formatter(formatter)
+        axis.minorticks_off()
+        axis.set_ylim(bottom=0, top=dram_ylim * 1.1)
+    dram_plot(axes[1][0], ycsbc, x_indices, size_labels)
+    dram_plot(axes[1][1], ycsbb, x_indices, size_labels)
+    dram_plot(axes[1][2], ycsba, x_indices, size_labels)
+    dram_plot(axes[1][3], ycsbi, x_indices, ycsbi_labels)
+    axes[1][0].set_ylabel('Mem Traffic (KBPT)')
+    axes[1][1].set_xlabel('Table Size')
+    axes[1][3].set_xlabel('Insert Ratio')
+    axes[0][1].set_yticklabels('')
+    axes[0][2].set_yticklabels('')
+    axes[0][3].set_yticklabels('')
+
+    legh1, legl1 = axes[0][2].get_legend_handles_labels()
+    legh2 = [
+        mpatch.Patch(facecolor='white', edgecolor='black', hatch='\\\\'),
+        mpatch.Patch(facecolor='white', edgecolor='red', hatch='//'), 
+        mpatch.Patch(color='lightgreen'), mpatch.Patch(color='green'),
+        mpatch.Patch(color='lightgrey'), mpatch.Patch(color='grey'),
     ]
-    axes[1][0].legend(handles=patch_handles, loc='upper left')
-    ycsba_tpbw = {
-        MOSAICDB: [1000.0 * mtps / (mbps0 + mbps1) for mtps, mbps0, mbps1 in zip(
-            ycsba_tput[MOSAICDB], ycsba_dramrd[MOSAICDB], ycsba_dramwr[MOSAICDB]
-        )],
-        OLTPIM: [1000.0 * mtps / (mbps0 + mbps1 + mbps2 + mbps3) for mtps, mbps0, mbps1, mbps2, mbps3 in zip(
-            ycsba_tput[OLTPIM], ycsba_dramrd[OLTPIM], ycsba_dramwr[OLTPIM], ycsba_pimrd[OLTPIM], ycsba_pimwr[OLTPIM]
-        )]
-    }
-    axes[1][1].bar(mosaic_indices, ycsba_tpbw[MOSAICDB], width, color='white', edgecolor='black', hatch='\\\\', label=MOSAICDB)
-    axes[1][1].bar(oltpim_indices, ycsba_tpbw[OLTPIM], width, color='white', edgecolor='red', hatch='//', label=OLTPIM)
-    axes[1][1].set_xticks(x_indices)
-    axes[1][1].set_xticklabels(x_labels)
-    axes[1][1].set_xlabel('')
-    axes[1][1].set_ylabel('Txn per Traffic (KTxn/MiB)')
-    axes[1][1].set_xlim(-0.5, len(x_indices) - 0.5)
-    axes[1][1].yaxis.set_major_formatter(formatter)
-    axes[1][1].minorticks_off()
-    axes[1][1].set_ylim(bottom=0)
-    fig.supxlabel('Table Size')
-    plt.savefig(result_plot_path(args, EXP_NAME, '-update'))
+    legl2 = [
+        MOSAICDB, OLTPIM, 'DRAM.Rd', 'DRAM.Wr', 'PIM.Rd', 'PIM.Wr',
+    ]
+    fig.legend(legh1 + legh2, legl1 + legl2, ncol=5, loc='upper center', bbox_to_anchor=(0.5, 0))
+    plt.savefig(result_plot_path(args, EXP_NAME, '-overall'), bbox_inches='tight')
     plt.close(fig)
 
 if __name__ == "__main__":
@@ -239,6 +222,8 @@ if __name__ == "__main__":
             for workload_size in WORKLOAD_SIZES[workload]:
                 for gc in GC_OPTS[workload]:
                     for system in SYSTEMS:
-                        run(args, system, workload, workload_size, no_gc=(not gc))
+                        run(args, system, workload, workload_size,
+                            BENCH_SECONDS(workload, workload_size), HUGETLB_SIZE_GB,
+                            no_gc=(not gc))
     else:
         plot(args)

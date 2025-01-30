@@ -7,11 +7,17 @@ from matplotlib.ticker import FuncFormatter
 
 EXP_NAME = 'batchsize'
 SYSTEMS = ['MosaicDB', 'OLTPim']
+MULTIGET_OPTION = {
+    'MosaicDB': [True],
+    'OLTPim': [False, True]
+}
 WORKLOADS = ['YCSB-B']
 WORKLOAD_SIZE = 10 ** 8
 CORO_BATCH_SIZES = [
     2, 4, 8, 16, 32, 64, 128, 256, 512, 1024
 ]
+BENCH_SECONDS = 60
+HUGETLB_SIZE_GB = 180
 
 def plot(args):
     batchsize = {MOSAICDB: [], OLTPIM: []}
@@ -86,8 +92,11 @@ if __name__ == "__main__":
         for workload in WORKLOADS:
             workload_size = WORKLOAD_SIZE
             for system in SYSTEMS:
-                for coro_batch_size in CORO_BATCH_SIZES:
-                    run(args, system, workload, workload_size,
-                        coro_batch_size)
+                for multiget in MULTIGET_OPTION[system]:
+                    for coro_batch_size in CORO_BATCH_SIZES:
+                        run(args, system, workload, workload_size,
+                            BENCH_SECONDS, HUGETLB_SIZE_GB,
+                            coro_batch_size=coro_batch_size,
+                            no_pim_multiget=(not multiget))
     else:
         plot(args)

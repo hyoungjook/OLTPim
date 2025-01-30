@@ -41,6 +41,8 @@ def parse_args():
         help='Disable logging')
     parser.add_argument('--no-numa-local-workload', action='store_false', dest='numa_local_workload',
         help='Disable NUMA-local workload.')
+    parser.add_argument('--no-pim-multiget', action='store_false', dest='pim_multiget',
+        help='Disable PIM multiget transactions.')
     parser.add_argument('--no-gc', action='store_false', dest='gc',
         help='Disable garbage collection.')
     parser.add_argument('--no-interleave', action='store_false', dest='interleave',
@@ -51,8 +53,6 @@ def parse_args():
         help='Total number of UPMEM ranks. Used if system="OLTPim".')
     parser.add_argument('--measure-on-upmem-server', action='store_true',
         help='Provide if measuring on UPMEM server.')
-    parser.add_argument('--record-time-series', type=str, default=None, dest='time_series_file',
-        help='Additionally record time series tput data to the given file.')
     args = parser.parse_args()
 
     if not args.print_header:
@@ -165,7 +165,7 @@ def ycsb_options(args):
         f'-ycsb_hot_table_size={table_size}',
         f'-ycsb_workload={ycsb_type}'
     ]
-    if args.system == 'OLTPim':
+    if args.system == 'OLTPim' and args.pim_multiget:
         opts += ['-ycsb_oltpim_multiget=1']
     return opts
 
@@ -181,7 +181,7 @@ def tpcc_options(args):
         opts += [
             '-tpcc_txn_workload_mix="0,0,0,0,50,50,0,0"'
         ]
-    if args.system == 'OLTPim':
+    if args.system == 'OLTPim' and args.pim_multiget:
         opts += ['-tpcc_oltpim_multiget=1']
     return opts
 
@@ -277,25 +277,6 @@ def parse_result(result):
     values_dict = {}
     for i in range(len(values) // 2):
         values_dict[values[2 * i + 1]] = float(values[2 * i])
-
-    if args.time_series_file:
-        tputs_series = []
-        series_parse = False
-        for line in lines:
-            if 'starting benchmark...' in line:
-                series_parse = True
-                continue
-            if '--- benchmark statistics ---' in line:
-                series_parse = False
-                break
-            if series_parse:
-                next_series = len(tputs) + 1
-                if line.startswith(f'{next_series},'):
-                    # decode
-                    tokens = line.split(',')
-                    tputs_series += [float(tokens[3])]
-        with open(args.time_series_file, "w") as f:
-            f.write(','.join(map(str, tputs_series)))
 
     return values_dict
 

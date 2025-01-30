@@ -19,6 +19,8 @@ BREAKDOWNS = [
     ('OLTPim', False, True, None),
     ('OLTPim', False, False, None),
 ]
+BENCH_SECONDS = 60
+HUGETLB_SIZE_GB = 180
 
 X_LABELS = ['Baseline', 'Offload\nIndex', '+Offload\nVersions', '+Direct\nPIM Access', '+PIM CPU\nInterleave']
 
@@ -70,6 +72,7 @@ if __name__ == "__main__":
             for workload_size in WORKLOAD_SIZES:
                 for system, no_numa_local, no_interleave, suffix in BREAKDOWNS:
                     run(args, system, workload, workload_size, 
+                        BENCH_SECONDS, HUGETLB_SIZE_GB,
                         no_numa_local_workload=no_numa_local,
                         no_interleave=no_interleave,
                         executable_suffix=suffix)

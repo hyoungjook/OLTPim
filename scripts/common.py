@@ -13,12 +13,8 @@ def parse_args():
         help='Path of the program build directory.')
     parser.add_argument('--log-dir', type=str, default='/mnt/log',
         help='Path of the logging directory.')
-    parser.add_argument('--hugetlb-size-gb', type=int, default=160,
-        help='Size (GiB) of hugeTLB page to pre-allocate.')
     parser.add_argument('--result-dir', type=str, required=True,
         help='Path of directory in which the CSV result file will be stored.')
-    parser.add_argument('--bench-seconds', type=int, default=60,
-        help='Seconds to run each benchmark.')
     parser.add_argument('--bench-threads', type=int, default=os.cpu_count(),
         help='Number of worker threads.')
     parser.add_argument('--num-upmem-ranks', type=int, default=None,
@@ -64,8 +60,10 @@ def print_header(args):
             subprocess.run(cmd)
 
 def run(args, system, workload, workload_size,
+        bench_seconds, hugetlb_size_gb,
         coro_batch_size=None, no_logging=False,
-        no_numa_local_workload=False, no_gc=False, no_interleave=False,
+        no_numa_local_workload=False, no_pim_multiget=False,
+        no_gc=False, no_interleave=False,
         executable_suffix=None):
     if not args.systems[system]:
         return
@@ -74,12 +72,12 @@ def run(args, system, workload, workload_size,
         'python3', runner,
         '--build-dir', args.build_dir,
         '--log-dir', args.log_dir,
-        '--hugetlb-size-gb', str(args.hugetlb_size_gb),
+        '--hugetlb-size-gb', str(hugetlb_size_gb),
         '--result-file', args.result_file[system],
         '--system', system,
         '--workload', workload,
         '--workload-size', str(workload_size),
-        '--seconds', str(args.bench_seconds),
+        '--seconds', str(bench_seconds),
         '--threads', str(args.bench_threads),
     ]
     if args.num_upmem_ranks:
@@ -92,6 +90,8 @@ def run(args, system, workload, workload_size,
         cmd += ['--no-logging']
     if no_numa_local_workload:
         cmd += ['--no-numa-local-workload']
+    if no_pim_multiget:
+        cmd += ['--no-pim-multiget']
     if no_gc:
         cmd += ['--no-gc']
     if no_interleave:
