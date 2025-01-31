@@ -208,8 +208,8 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
 #endif
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     auto &w = pim_write_set[i];
-    if (w.entry._ptr != 0) MM::deallocate(w.entry);
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
+    if (w.entry._ptr != 0) MM::deallocate(w.entry);
     // abort to pim
     new (&reqs[i]) oltpim::request_abort;
     auto &args = reqs[i].args;
@@ -219,7 +219,9 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
     if (!w.is_secondary_index_record()) {
       Object *obj = w.get_object();
       obj->SetCSN(NULL_PTR);
-      oidmgr->UnlinkTuple(w.entry);
+      fat_ptr *entry_ptr = (fat_ptr*)w.entry._ptr;
+      oidmgr->UnlinkTuple(entry_ptr);
+      MM::deallocate(*entry_ptr);
     }
 #endif
   }
@@ -275,6 +277,10 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
       oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
 #else
       if (!w.is_secondary_index_record()) {
+        auto aligned_size = align_up(w.size + sizeof(dlog::log_record));
+        auto size_code = encode_size_aligned(aligned_size);
+        fat_ptr pdest = LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + off, segnum, size_code).to_ptr();
+        object->SetPersistentAddress(pdest);
         fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
         object->SetCSN(csn_ptr);
       }

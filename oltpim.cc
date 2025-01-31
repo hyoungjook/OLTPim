@@ -27,7 +27,11 @@ void finalize_index_setup() {
   oltpim::engine::config config = {
     .num_ranks_per_numa_node = (int)FLAGS_oltpim_num_ranks_per_numa_node,
     .alloc_fn = ermia::config::tls_alloc ? ermia::MM::allocate_onnode : nullptr,
+#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
     .gc_prob = (ermia::config::enable_gc ? ermia::config::gc_prob : 0),
+#else
+    .gc_prob = 0,
+#endif
     .enable_measure_energy = (ermia::config::measure_energy != 0),
     .enable_interleave = FLAGS_oltpim_interleave
   };
@@ -106,44 +110,13 @@ ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *r
   value.l = tuple->size;
   co_return rc_t{RC_TRUE};
 }
-#else
-void
-ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t key, void *req_) {
-  ALWAYS_ASSERT(IsPrimary());
-  auto *req = (oltpim::request_getonly*)req_;
-  // req_ actually points to oltpim::request_get, just use the storage as
-  // oltpim::request_getonly.
-  new (req) oltpim::request_getonly;
-  auto &args = req->args;
-  args.key = key;
-  args.index_id = index_id;
-  int pim_id = pim_id_of(key);
-  oltpim::engine::g_engine.push(pim_id, req);
-}
-
-ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *req_) {
-  auto *req = (oltpim::request_getonly*)req_;
-  while (!oltpim::engine::g_engine.is_done(req)) {
-    co_await std::suspend_always{};
-  }
-  auto &rets = req->rets;
-  bool found = (rets.status == STATUS_SUCCESS);
-  dbtuple *tuple = nullptr;
-  if (found) {
-    tuple = oidmgr->oid_get_version(table_descriptor->GetTupleArray(), rets.value, t->xc);
-    if (!tuple) found = false;
-  }
-  rc_t rc{RC_FALSE};
-  if (found) {
-    rc = t->DoTupleRead(tuple, &value);
-  }
-  co_return rc;
-}
 #endif
 
 ermia::coro::task<rc_t>
 ConcurrentMasstreeIndex::pim_GetRecord(transaction *t, const uint64_t key, varstr &value) {
+#if defined(OLTPIM_OFFLOAD_INDEX_ONLY)
+  ALWAYS_ASSERT(false); // Not supported
+#endif
   auto *xc = t->xc;
   rc_t rc;
 
@@ -236,49 +209,6 @@ ConcurrentMasstreeIndex::pim_InsertRecordEnd(transaction *t, void *req_, uint64_
   if (oid) *oid = SVALUE_MAKE(pim_id, rets.oid);
   co_return {RC_TRUE};
 }
-#else
-void
-ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t key, varstr &value, void *req_) {
-  ALWAYS_ASSERT(IsPrimary());
-  // t->Insert(table_descriptor, false, &value, &tuple);
-  OID oid;
-  {
-    auto *tuple_array = table_descriptor->GetTupleArray();
-    FID tuple_fid = table_descriptor->GetTupleFid();
-    fat_ptr new_head = Object::Create(&value, t->xc->begin_epoch);
-    auto *tuple = (dbtuple*)((Object*)new_head.offset())->GetPayload();
-    tuple->GetObject()->SetCSN(t->xid.to_ptr());
-    oid = oidmgr->alloc_oid(tuple_fid);
-    ALWAYS_ASSERT(oid != INVALID_OID);
-    oidmgr->oid_put_new(tuple_array, oid, new_head);
-    t->add_to_pim_write_set(new_head, index_id, tuple_fid, oid, tuple->size, true);
-  }
-  // Insert to the index
-  auto *req = (oltpim::request_insertonly*)req_;
-  // req_ actually points to oltpim::request_insert, just use the storage as
-  // oltpim::request_insertonly.
-  new (req) oltpim::request_insertonly;
-  auto &args = req->args;
-  args.key = key;
-  args.value = oid;
-  args.index_id = index_id;
-  int pim_id = pim_id_of(key);
-  oltpim::engine::g_engine.push(pim_id, req);
-}
-
-ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_InsertRecordEnd(transaction *t, void *req_, uint64_t *oid) {
-  auto *req = (oltpim::request_insertonly*)req_;
-  while (!oltpim::engine::g_engine.is_done(req)) {
-    co_await std::suspend_always{};
-  }
-  auto &rets = req->rets;
-  if (rets.status != STATUS_SUCCESS) {
-    co_return {RC_FALSE};
-  }
-  if (oid) *oid = req->args.value;
-  co_return {RC_TRUE};
-}
 #endif
 
 ermia::coro::task<rc_t>
@@ -329,6 +259,7 @@ ConcurrentMasstreeIndex::pim_InsertOID(transaction *t, const uint64_t key, uint6
   co_return rc;
 }
 
+#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
 void
 ConcurrentMasstreeIndex::pim_UpdateRecordBegin(transaction *t, const uint64_t key, varstr &value, void *req_) {
   ALWAYS_ASSERT(IsPrimary());
@@ -369,6 +300,7 @@ ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_) {
   if (ermia::config::enable_gc) pim_gc_tuple_chain(rets.gc_begin, rets.gc_num);
   co_return {RC_TRUE};
 }
+#endif
 
 ermia::coro::task<rc_t>
 ConcurrentMasstreeIndex::pim_UpdateRecord(transaction *t, const uint64_t key, varstr &value) {
@@ -553,6 +485,250 @@ ConcurrentMasstreeIndex::pim_Scan(transaction *t, const uint64_t start_key, cons
   }
   co_return rc;
 }
+
+#if defined(OLTPIM_OFFLOAD_INDEX_ONLY)
+void
+ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t key, void *req_) {
+  ALWAYS_ASSERT(IsPrimary());
+  auto *req = (oltpim::request_getonly*)req_;
+  // req_ actually points to oltpim::request_get, just use the storage as
+  // oltpim::request_getonly.
+  new (req) oltpim::request_getonly;
+  auto &args = req->args;
+  args.key = key;
+  args.index_id = index_id;
+  int pim_id = pim_id_of(key);
+  oltpim::engine::g_engine.push(pim_id, req);
+}
+
+ermia::coro::task<rc_t>
+ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *req_) {
+  auto *req = (oltpim::request_getonly*)req_;
+  while (!oltpim::engine::g_engine.is_done(req)) {
+    co_await std::suspend_always{};
+  }
+  auto &rets = req->rets;
+  bool found = (rets.status == STATUS_SUCCESS);
+  dbtuple *tuple = nullptr;
+  if (found) {
+    OID oid = rets.value;
+    {
+      // tuple = oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oid, t->xc);
+      fat_ptr *entry = table_descriptor->GetTupleArray()->get(oid);
+start_over:
+      fat_ptr ptr = volatile_read(*entry);
+      while (ptr.offset()) {
+        Object *cur_obj = (Object*)ptr.offset();
+        fat_ptr tentative_next = cur_obj->GetNextVolatile();
+        bool retry = false;
+        bool visible = oidmgr->TestVisibility(cur_obj, t->xc, retry);
+        if (retry) {
+          co_await std::suspend_always{};
+          goto start_over;
+        }
+        if (visible) {
+          tuple = (dbtuple*)cur_obj->GetPinnedTuple(t);
+          goto end;
+        }
+        ptr = tentative_next;
+      }
+      tuple = nullptr;
+    }
+end:
+    if (!tuple) found = false;
+  }
+  rc_t rc{RC_FALSE};
+  if (found) {
+    rc = t->DoTupleRead(tuple, &value);
+  }
+  co_return rc;
+}
+
+void
+ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t key, varstr &value, void *req_) {
+  ALWAYS_ASSERT(IsPrimary());
+  // t->Insert(table_descriptor, false, &value, &tuple);
+  OID oid;
+  {
+    auto *tuple_array = table_descriptor->GetTupleArray();
+    FID tuple_fid = table_descriptor->GetTupleFid();
+    fat_ptr new_head = Object::Create(&value, t->xc->begin_epoch);
+    auto *tuple = (dbtuple*)((Object*)new_head.offset())->GetPayload();
+    tuple->GetObject()->SetCSN(t->xid.to_ptr());
+    oid = oidmgr->alloc_oid(tuple_fid);
+    ALWAYS_ASSERT(oid != INVALID_OID);
+    oidmgr->oid_put_new(tuple_array, oid, new_head);
+    t->add_to_pim_write_set(
+      fat_ptr{(uint64_t)tuple_array->get(oid)}, // indexonly: store &fat_ptr
+      index_id, tuple_fid, oid, tuple->size, true);
+  }
+  // Insert to the index
+  auto *req = (oltpim::request_insertonly*)req_;
+  // req_ actually points to oltpim::request_insert, just use the storage as
+  // oltpim::request_insertonly.
+  new (req) oltpim::request_insertonly;
+  auto &args = req->args;
+  args.key = key;
+  args.value = oid;
+  args.index_id = index_id;
+  int pim_id = pim_id_of(key);
+  oltpim::engine::g_engine.push(pim_id, req);
+}
+
+ermia::coro::task<rc_t>
+ConcurrentMasstreeIndex::pim_InsertRecordEnd(transaction *t, void *req_, uint64_t *oid) {
+  auto *req = (oltpim::request_insertonly*)req_;
+  while (!oltpim::engine::g_engine.is_done(req)) {
+    co_await std::suspend_always{};
+  }
+  auto &rets = req->rets;
+  if (rets.status != STATUS_SUCCESS) {
+    co_return {RC_FALSE};
+  }
+  if (oid) *oid = req->args.value;
+  co_return {RC_TRUE};
+}
+
+void
+ConcurrentMasstreeIndex::pim_UpdateRecordBegin(transaction *t, const uint64_t key, varstr &value, void *req_) {
+  ALWAYS_ASSERT(IsPrimary());
+  auto *req = (oltpim::request_getonly*)req_;
+  // req_ actually points to oltpim::request_update, just use the storage as
+  // oltpim::request_getonly.
+  new (req) oltpim::request_getonly;
+  auto &args = req->args;
+  args.key = key;
+  args.index_id = index_id;
+  int pim_id = pim_id_of(key);
+  oltpim::engine::g_engine.push(pim_id, req);
+  // store &value after req
+  *(varstr**)(req + 1) = &value;
+}
+
+ermia::coro::task<rc_t>
+ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_) {
+  auto *req = (oltpim::request_getonly*)req_;
+  while (!oltpim::engine::g_engine.is_done(req)) {
+    co_await std::suspend_always{};
+  }
+  auto &rets = req->rets;
+  bool found = (rets.status == STATUS_SUCCESS);
+
+  if (found) {
+    // t->Update(table_descriptor, oid, key=req->args.key, value=v)
+    OID oid = rets.value;
+    varstr *v = *(varstr**)(req + 1);
+    fat_ptr new_obj_ptr = NULL_PTR;
+    fat_ptr prev_obj_ptr = NULL_PTR;
+    auto *oa = table_descriptor->GetTupleArray();
+    {
+      //fat_ptr prev_obj_ptr = oidmgr->UpdateTuple(
+      //  table_descriptor->GetTupleArray(), oid, v, t->xc, &new_obj_ptr);
+      auto *updater_xc = t->xc;
+      auto *ptr = oa->get(oid);
+start_over:
+      fat_ptr head = volatile_read(*ptr);
+      ASSERT(head.asi_type() == 0);
+      Object *old_desc = (Object*)head.offset();
+      ASSERT(old_desc);
+      ASSERT(head.size_code() != INVALID_SIZE_CODE);
+      auto *version = (dbtuple*)old_desc->GetPayload();
+      bool overwrite = false;
+      auto csn = old_desc->GetCSN();
+      if (csn == NULL_PTR) {
+        co_await std::suspend_always{};
+        goto start_over;
+      } else if (csn.asi_type() == fat_ptr::ASI_XID) {
+        auto holder_xid = XID::from_ptr(csn);
+        XID updater_xid = volatile_read(updater_xc->owner);
+        if (holder_xid == updater_xid) {
+          overwrite = true;
+          goto install;
+        }
+wait_for_commit:
+        TXN::xid_context *holder = TXN::xid_get_context(holder_xid);
+        if (!holder) {
+          ASSERT(old_desc->GetCSN().asi_type() == fat_ptr::ASI_CSN || oidmgr->oid_get(oa, oid) != head);
+          goto start_over;
+        }
+        auto state = volatile_read(holder->state);
+        auto owner = volatile_read(holder->owner);
+        if (unlikely(owner != holder_xid)) {
+          goto start_over;
+        }
+        ASSERT(holder_xid != updater_xid);
+        if (state == TXN::TXN_COMMITTING) {
+          co_await std::suspend_always{};
+          goto wait_for_commit;
+        }
+        if (state == TXN::TXN_CMMTD) {
+          auto holder_csn = volatile_read(holder->end);
+          // >= RC can only update if we can see the latest version
+          if (holder_csn >= updater_xc->begin) {
+            goto end;
+          }
+          ASSERT(holder_xid != updater_xid);
+          goto install;
+        }
+        goto end;
+      } else {
+        ASSERT(csn.asi_type() == fat_ptr::ASI_CSN);
+        if (CSN::from_ptr(csn).offset() >= updater_xc->begin) {
+          goto end;
+        }
+        goto install;
+      }
+install:
+      new_obj_ptr = Object::Create(v, updater_xc->begin_epoch);
+      ASSERT(new_obj_ptr.asi_type() == 0);
+      Object *new_obj = (Object*)new_obj_ptr.offset();
+      new_obj->SetCSN(updater_xc->owner.to_ptr());
+      if (overwrite) {
+        new_obj->SetNextPersistent(old_desc->GetNextPersistent());
+        new_obj->SetNextVolatile(old_desc->GetNextVolatile());
+        volatile_write(ptr->_ptr, new_obj_ptr._ptr);
+        __sync_synchronize();
+        prev_obj_ptr = head;
+        goto end;
+      } else {
+        fat_ptr pa = old_desc->GetPersistentAddress();
+        new_obj->SetNextPersistent(pa);
+        new_obj->SetNextVolatile(head);
+        if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr, new_obj_ptr._ptr)) {
+          // Succeeded installing a new version, now only I can modify the
+          // chain, try recycle some objects
+          if (config::enable_gc) {
+            MM::gc_version_chain(ptr);
+          }
+          prev_obj_ptr = head;
+          goto end;
+        } else {
+          MM::deallocate(new_obj_ptr);
+        }
+      }
+    }
+end:
+    Object *prev_obj = (Object*)prev_obj_ptr.offset();
+    if (prev_obj) {
+      auto *tuple = (dbtuple*)((Object*)new_obj_ptr.offset())->GetPayload();
+      fat_ptr prev_csn = prev_obj->GetCSN();
+      if (!(prev_csn.asi_type() == fat_ptr::ASI_XID &&
+          XID::from_ptr(prev_csn) == t->xid)) {
+        t->add_to_pim_write_set(
+          fat_ptr{(uint64_t)oa->get(oid)}, // indexonly: store &fat_ptr
+          index_id, table_descriptor->GetTupleFid(), oid, tuple->size, false);
+      }
+      co_return {RC_TRUE};
+    }
+    else {
+      co_return {RC_ABORT_SI_CONFLICT};
+    }
+  }
+  else {
+    co_return {RC_FALSE};
+  }
+}
+#endif // defined(OLTPIM_OFFLOAD_INDEX_ONLY)
 
 }
 
