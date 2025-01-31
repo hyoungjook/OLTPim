@@ -3,7 +3,7 @@ import csv
 import matplotlib.lines as mline
 import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter, ScalarFormatter
+from matplotlib.ticker import FuncFormatter, LogFormatterSciNotation
 
 EXP_NAME = 'batchsize'
 SYSTEMS = ['MosaicDB', 'OLTPim']
@@ -30,6 +30,7 @@ def plot(args):
         'pimrd': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
         'pimwr': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
         'totalbw': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
+        'abort': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
     }
     def append_to_stats(workload_stats, system, row):
         workload_stats['batchsize'][system].append(int(row['corobatchsize']))
@@ -45,6 +46,9 @@ def plot(args):
         workload_stats['pimrd'][system].append(pimrd)
         workload_stats['pimwr'][system].append(pimwr)
         workload_stats['totalbw'][system].append(dramrd + dramwr + pimrd + pimwr)
+        n_commits = float(row['commits'])
+        n_aborts = float(row['aborts'])
+        workload_stats['abort'][system].append(n_aborts / (n_commits + n_aborts) * 100)
     for system in SYSTEMS:
         with open(result_file_path(args, EXP_NAME, system), 'r') as f:
             reader = csv.DictReader(f)
@@ -54,7 +58,7 @@ def plot(args):
                     system = OLTPIM_NOMULTIGET
                 append_to_stats(stats, system, row)
 
-    fig, axes = plt.subplots(2, 2, figsize=(5, 4), constrained_layout=True)
+    fig, axes = plt.subplots(2, 2, figsize=(5, 3.5), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
 
     def simple_plot(axis, yname, ylabel, ylog):
@@ -72,17 +76,18 @@ def plot(args):
         axis.set_xlim(1, 2000)
         axis.minorticks_off()
     simple_plot(axes[0][0], 'tput', 'Throughput (MTPS)', False)
-    simple_plot(axes[1][0], 'p99', 'P99 Latency (ms)', True)
-    simple_plot(axes[1][1], 'totalbw', 'Memory Traffic\nPer Txn (KBPT)', True)
-    bw_max = max(stats['totalbw'][MOSAICDB] + stats['totalbw'][OLTPIM])
-    axes[1][1].set_ylim(top=bw_max * 1.2)
+    simple_plot(axes[0][1], 'p99', 'P99 Latency (ms)', True)
+    simple_plot(axes[1][0], 'totalbw', 'Memory Traffic\nPer Txn (KBPT)', False)
+    simple_plot(axes[1][1], 'abort', 'Abort Rate (%)', True)
     axes[0][0].set_xticklabels('')
-
-    axes[0][1].axis('off')
+    axes[0][1].set_xticklabels('')
+    bw_max = max(stats['totalbw'][MOSAICDB] + stats['totalbw'][OLTPIM])
+    axes[1][0].set_ylim(top=bw_max * 1.2)
+    axes[1][1].yaxis.set_major_formatter(LogFormatterSciNotation())
     legh, legl = axes[0][0].get_legend_handles_labels()
-    axes[0][1].legend(legh, legl, loc='center right', bbox_to_anchor=(1, 0.5))
     fig.supxlabel('Coroutine Batchsize per Thread')
-    plt.savefig(result_plot_path(args, EXP_NAME))
+    fig.legend(legh, legl, ncol=3, loc='upper center', bbox_to_anchor=(0.5, 0))
+    plt.savefig(result_plot_path(args, EXP_NAME), bbox_inches='tight')
     plt.close(fig)
 
 if __name__ == "__main__":
