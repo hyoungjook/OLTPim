@@ -81,8 +81,7 @@ def plot(args):
         'pimrd': {MOSAICDB: [], OLTPIM: []},
         'pimwr': {MOSAICDB: [], OLTPIM: []}
     }
-    def append_to_stats(workload_stats, row):
-        
+    def append_to_stats(workload_stats, system, row):
         workload_stats['tput'][system].append(float(row['commits']) / float(row['time(s)']) / 1000000)
         workload_stats['p99'][system].append(float(row['p99(ms)']))
         workload_stats['dramrd'][system].append(float(row['dram.rd(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
@@ -97,29 +96,29 @@ def plot(args):
                 workload = row['workload']
                 if workload == 'YCSB-C':
                     ycsbc['size'][system].append(int(row['workload_size']))
-                    append_to_stats(ycsbc, row)
+                    append_to_stats(ycsbc, system, row)
                 elif workload == 'YCSB-B':
                     ycsbb['size'][system].append(int(row['workload_size']))
-                    append_to_stats(ycsbb, row)
+                    append_to_stats(ycsbb, system, row)
                 elif workload == 'YCSB-A':
                     if row['GC'] == 'True':
                         ycsba['size'][system].append(int(row['workload_size']))
-                        append_to_stats(ycsba, row)
+                        append_to_stats(ycsba, system, row)
                     else:
                         ycsba_nogc['size'][system].append(int(row['workload_size']))
-                        append_to_stats(ycsba_nogc, row)
+                        append_to_stats(ycsba_nogc, system, row)
                 elif workload == 'YCSB-I1':
                     ycsbi['ins-ratio'][system].append(0.25)
-                    append_to_stats(ycsbi, row)
+                    append_to_stats(ycsbi, system, row)
                 elif workload == 'YCSB-I2':
                     ycsbi['ins-ratio'][system].append(0.5)
-                    append_to_stats(ycsbi, row)
+                    append_to_stats(ycsbi, system, row)
                 elif workload == 'YCSB-I3':
                     ycsbi['ins-ratio'][system].append(0.75)
-                    append_to_stats(ycsbi, row)
+                    append_to_stats(ycsbi, system, row)
                 elif workload == 'YCSB-I4':
                     ycsbi['ins-ratio'][system].append(1.0)
-                    append_to_stats(ycsbi, row)
+                    append_to_stats(ycsbi, system, row)
 
     # Overall
     fig, axes = plt.subplots(2, 4, figsize=(8, 4), constrained_layout=True)
@@ -192,12 +191,12 @@ def plot(args):
     dram_plot(axes[1][1], ycsbb, x_indices, size_labels)
     dram_plot(axes[1][2], ycsba, x_indices, size_labels)
     dram_plot(axes[1][3], ycsbi, x_indices, ycsbi_labels)
-    axes[1][0].set_ylabel('Mem Traffic (KBPT)')
+    axes[1][0].set_ylabel('Memory Traffic\nPer Txn (KBPT)')
     axes[1][1].set_xlabel('Table Size')
     axes[1][3].set_xlabel('Insert Ratio')
-    axes[0][1].set_yticklabels('')
-    axes[0][2].set_yticklabels('')
-    axes[0][3].set_yticklabels('')
+    axes[1][1].set_yticklabels('')
+    axes[1][2].set_yticklabels('')
+    axes[1][3].set_yticklabels('')
 
     legh1, legl1 = axes[0][2].get_legend_handles_labels()
     legh2 = [

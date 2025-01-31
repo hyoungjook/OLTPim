@@ -282,7 +282,7 @@ def parse_result(result):
 
 def print_header():
     csv_header = 'system,suffix,workload,workload_size,corobatchsize,' + \
-        'log,NUMALocal,GC,Interleave,' + \
+        'log,NUMALocal,GC,Interleave,PIMMultiget,' + \
         'time(s),commits,aborts,p99(ms),' + \
         'Epkg(J),Eram(J),' + \
         'dram.rd(MiB),dram.wr(MiB),' + \
@@ -295,7 +295,7 @@ def print_header():
 def print_result(args, values):
     csv = f"{args.system},{args.executable_suffix},{args.workload},{args.workload_size}," + \
         f"{args.coro_batch_size},{args.logging},{args.numa_local_workload}," + \
-        f"{args.gc},{args.interleave}," + \
+        f"{args.gc},{args.interleave},{args.pim_multiget}," + \
         f"{values['time(s)']},{values['commits']},{values['aborts']},{values['p99(ms)']}," + \
         f"{values['Epkg(J)']},{values['Eram(J)']}," + \
         f"{values['dram.rd(MiB)']},{values['dram.wr(MiB)']}," + \

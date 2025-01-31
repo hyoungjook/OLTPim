@@ -3,7 +3,7 @@ import csv
 import matplotlib.lines as mline
 import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FuncFormatter, ScalarFormatter
 
 EXP_NAME = 'batchsize'
 SYSTEMS = ['MosaicDB', 'OLTPim']
@@ -18,71 +18,72 @@ CORO_BATCH_SIZES = [
 ]
 BENCH_SECONDS = 60
 HUGETLB_SIZE_GB = 180
+OLTPIM_NOMULTIGET = OLTPIM + ' (no MultiGet)'
 
 def plot(args):
-    batchsize = {MOSAICDB: [], OLTPIM: []}
-    tput = {MOSAICDB: [], OLTPIM: []}
-    p99 = {MOSAICDB: [], OLTPIM: []}
-    dramRd = {MOSAICDB: [], OLTPIM: []}
-    dramWr = {MOSAICDB: [], OLTPIM: []}
-    pimRd = {MOSAICDB: [], OLTPIM: []}
-    pimWr = {MOSAICDB: [], OLTPIM: []}
+    stats = {
+        'batchsize': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
+        'tput': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
+        'p99': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
+        'dramrd': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
+        'dramwr': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
+        'pimrd': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
+        'pimwr': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
+        'totalbw': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
+    }
+    def append_to_stats(workload_stats, system, row):
+        workload_stats['batchsize'][system].append(int(row['corobatchsize']))
+        workload_stats['tput'][system].append(float(row['commits']) / float(row['time(s)']) / 1000000)
+        workload_stats['p99'][system].append(float(row['p99(ms)']))
+        per_txn_bw = lambda name: float(row[name]) / float(row['commits']) * (1024*1024*1024/1000000)
+        dramrd = per_txn_bw('dram.rd(MiB)')
+        dramwr = per_txn_bw('dram.wr(MiB)')
+        pimrd = per_txn_bw('pim.rd(MiB)')
+        pimwr = per_txn_bw('pim.wr(MiB)')
+        workload_stats['dramrd'][system].append(dramrd)
+        workload_stats['dramwr'][system].append(dramwr)
+        workload_stats['pimrd'][system].append(pimrd)
+        workload_stats['pimwr'][system].append(pimwr)
+        workload_stats['totalbw'][system].append(dramrd + dramwr + pimrd + pimwr)
     for system in SYSTEMS:
         with open(result_file_path(args, EXP_NAME, system), 'r') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 system = row['system']
-                batchsize[system].append(float(row['corobatchsize']))
-                tput[system].append(float(row['commits']) / float(row['time(s)']) / 1000000)
-                p99[system].append(float(row['p99(ms)']))
-                dramRd[system].append(float(row['dram.rd(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
-                dramWr[system].append(float(row['dram.wr(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
-                pimRd[system].append(float(row['pim.rd(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
-                pimWr[system].append(float(row['pim.wr(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
+                if system == OLTPIM and row['PIMMultiget'] == 'False':
+                    system = OLTPIM_NOMULTIGET
+                append_to_stats(stats, system, row)
 
-    fig, axes = plt.subplots(2, 2, figsize=(5.5, 4), constrained_layout=True)
+    fig, axes = plt.subplots(2, 2, figsize=(5, 4), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
-    axes[0][0].plot(batchsize[MOSAICDB], tput[MOSAICDB], linestyle='-', marker='o', color='black', label=MOSAICDB)
-    axes[0][0].plot(batchsize[OLTPIM], tput[OLTPIM], linestyle='-', marker='o', color='red', label=OLTPIM)
-    axes[0][0].set_xlabel('')
-    axes[0][0].set_ylabel('Throughput (MTPS)')
-    axes[0][0].set_xscale('log')
-    axes[0][0].xaxis.set_major_formatter(formatter)
-    axes[0][0].yaxis.set_major_formatter(formatter)
-    axes[0][0].set_xlim(1, 2000)
-    axes[0][0].set_ylim(bottom=0)
-    axes[0][0].minorticks_off()
-    axes[0][1].plot(batchsize[MOSAICDB], p99[MOSAICDB], linestyle='-', marker='o', color='black', label=MOSAICDB)
-    axes[0][1].plot(batchsize[OLTPIM], p99[OLTPIM], linestyle='-', marker='o', color='red', label=OLTPIM)
-    axes[0][1].set_xlabel('')
-    axes[0][1].set_ylabel('P99 Latency (ms)')
-    axes[0][1].set_xscale('log')
-    axes[0][1].set_yscale('log')
-    axes[0][1].xaxis.set_major_formatter(formatter)
-    axes[0][1].yaxis.set_major_formatter(formatter)
-    axes[0][1].set_xlim(1, 2000)
-    axes[0][1].minorticks_off()
-    bw = {
-        MOSAICDB: [r + w for r, w in zip(dramRd[MOSAICDB], dramWr[MOSAICDB])],
-        OLTPIM: [dr+ dw + pr + pw for dr, dw, pr, pw in zip(dramRd[OLTPIM], dramWr[OLTPIM], pimRd[OLTPIM], pimWr[OLTPIM])]
-    }
-    axes[1][0].plot(batchsize[MOSAICDB], bw[MOSAICDB], linestyle='-', marker='o', color='black', label=MOSAICDB)
-    axes[1][0].plot(batchsize[OLTPIM], bw[OLTPIM], linestyle='-', marker='o', color='red', label=OLTPIM)
-    axes[1][0].set_xlabel('')
-    axes[1][0].set_ylabel('Memory Traffic (KB/txn)')
-    axes[1][0].set_xscale('log')
-    axes[1][0].xaxis.set_major_formatter(formatter)
-    axes[1][0].yaxis.set_major_formatter(formatter)
-    axes[1][0].set_xlim(1, 2000)
-    axes[1][0].minorticks_off()
-    axes[1][1].axis('off')
-    legends = [
-        mline.Line2D([0], [0], linestyle='-', marker='o', color='black', label=MOSAICDB),
-        mline.Line2D([0], [0], linestyle='-', marker='o', color='red', label=OLTPIM)
-    ]
-    axes[1][1].legend(handles=legends, loc='center')
+
+    def simple_plot(axis, yname, ylabel, ylog):
+        axis.plot(stats['batchsize'][MOSAICDB], stats[yname][MOSAICDB], linestyle='-', marker='o', color='black', label=MOSAICDB)
+        axis.plot(stats['batchsize'][OLTPIM_NOMULTIGET], stats[yname][OLTPIM_NOMULTIGET], linestyle='--', marker='*', color='pink', label=OLTPIM_NOMULTIGET)
+        axis.plot(stats['batchsize'][OLTPIM], stats[yname][OLTPIM], linestyle='-', marker='o', color='red', label=OLTPIM)
+        axis.set_xlabel('')
+        axis.set_ylabel(ylabel)
+        axis.set_xscale('log')
+        if ylog: axis.set_yscale('log')
+        else: axis.set_ylim(bottom=0)
+        axis.set_xticks([1, 10, 100, 1000])
+        axis.xaxis.set_major_formatter(formatter)
+        axis.yaxis.set_major_formatter(formatter)
+        axis.set_xlim(1, 2000)
+        axis.minorticks_off()
+    simple_plot(axes[0][0], 'tput', 'Throughput (MTPS)', False)
+    simple_plot(axes[1][0], 'p99', 'P99 Latency (ms)', True)
+    simple_plot(axes[1][1], 'totalbw', 'Memory Traffic\nPer Txn (KBPT)', True)
+    bw_max = max(stats['totalbw'][MOSAICDB] + stats['totalbw'][OLTPIM])
+    axes[1][1].set_ylim(top=bw_max * 1.2)
+    axes[0][0].set_xticklabels('')
+
+    axes[0][1].axis('off')
+    legh, legl = axes[0][0].get_legend_handles_labels()
+    axes[0][1].legend(legh, legl, loc='center right', bbox_to_anchor=(1, 0.5))
     fig.supxlabel('Coroutine Batchsize per Thread')
     plt.savefig(result_plot_path(args, EXP_NAME))
+    plt.close(fig)
 
 if __name__ == "__main__":
     args = parse_args()
