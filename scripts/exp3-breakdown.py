@@ -7,92 +7,97 @@ EXP_NAME = 'breakdown'
 WORKLOADS = ['YCSB-B']
 WORKLOAD_SIZES = [10 ** 8]
 # (system, no_numa_local, no_interleave, suffix)
+#BREAKDOWNS = [
+#    ('MosaicDB', True, False, None),
+#    ('OLTPim', True, True, '_indexonly_nodirect'),
+#    ('OLTPim', True, True, '_nodirect'),
+#    ('OLTPim', True, True, None),
+#    ('OLTPim', True, False, None),
+#    ('MosaicDB', False, False, None),
+#    ('OLTPim', False, True, '_indexonly_nodirect'),
+#    ('OLTPim', False, True, '_nodirect'),
+#    ('OLTPim', False, True, None),
+#    ('OLTPim', False, False, None),
+#]
 BREAKDOWNS = [
-    ('MosaicDB', True, False, None),
-    ('OLTPim', True, True, '_indexonly_nodirect'),
-    ('OLTPim', True, True, '_nodirect'),
-    ('OLTPim', True, True, None),
-    ('OLTPim', True, False, None),
-    ('MosaicDB', False, False, None),
-    ('OLTPim', False, True, '_indexonly_nodirect'),
-    ('OLTPim', False, True, '_nodirect'),
-    ('OLTPim', False, True, None),
-    ('OLTPim', False, False, None),
+    (MOSAICDB, True, False, None),
+    (MOSAICDB, False, False, None),
+    (OLTPIM, True, True, '_indexonly_nodirect'),
+    (OLTPIM, True, True, '_indexonly'),
+    (OLTPIM, True, False, '_indexonly'),
+    (OLTPIM, False, False, '_indexonly'),
+    (OLTPIM, True, True, '_nodirect'),
+    (OLTPIM, True, True, None),
+    (OLTPIM, True, False, None),
+    (OLTPIM, False, False, None),
 ]
 BENCH_SECONDS = 60
 HUGETLB_SIZE_GB = 180
+OLTPIM_IDXONLY = OLTPIM + ' (indexonly)'
 
 X_LABELS = [
     'MosaicDB', 
-    'Offload\nIndex', 
-    '+Offload\nVersions', 
+    '+NUMA\nLocal',
+    'Naive\nOLTPim',
     '+Direct\nPIM Access', 
-    '+PIM CPU\nInterleave'
+    '+PIM&CPU\nInterleave',
+    '+NUMA\nLocal'
 ]
 
 def plot(args):
-    sys_wide_stats = {
-        'tput': [],
-        'p99': [],
-        'dramrd': [],
-        'dramwr': [],
-        'pimrd': [],
-        'pimwr': [],
-        'totalbw': []
+    stats = {
+        'tput': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
+        'p99': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
+        'dramrd': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
+        'dramwr': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
+        'pimrd': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
+        'pimwr': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
+        'totalbw': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []}
     }
-    numa_local_stats = {
-        'tput': [],
-        'p99': [],
-        'dramrd': [],
-        'dramwr': [],
-        'pimrd': [],
-        'pimwr': [],
-        'totalbw': []
-    }
-    def append_to_stats(workload_stats, system, row):
-        workload_stats['tput'].append(float(row['commits']) / float(row['time(s)']) / 1000000)
-        workload_stats['p99'].append(float(row['p99(ms)']))
+    def append_to_stats(system, row):
+        stats['tput'][system].append(float(row['commits']) / float(row['time(s)']) / 1000000)
+        stats['p99'][system].append(float(row['p99(ms)']))
         per_txn_bw = lambda name: float(row[name]) / float(row['commits']) * (1024*1024*1024/1000000)
         dramrd = per_txn_bw('dram.rd(MiB)')
         dramwr = per_txn_bw('dram.wr(MiB)')
         pimrd = per_txn_bw('pim.rd(MiB)')
         pimwr = per_txn_bw('pim.wr(MiB)')
-        workload_stats['dramrd'].append(dramrd)
-        workload_stats['dramwr'].append(dramwr)
-        workload_stats['pimrd'].append(pimrd)
-        workload_stats['pimwr'].append(pimwr)
-        workload_stats['totalbw'].append(dramrd + dramwr + pimrd + pimwr)
+        stats['dramrd'][system].append(dramrd)
+        stats['dramwr'][system].append(dramwr)
+        stats['pimrd'][system].append(pimrd)
+        stats['pimwr'][system].append(pimwr)
+        stats['totalbw'][system].append(dramrd + dramwr + pimrd + pimwr)
     with open(result_file_path(args, EXP_NAME, MOSAICDB), 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if row['NUMALocal'] == 'True':
-                append_to_stats(numa_local_stats, MOSAICDB, row)
-            else:
-                append_to_stats(sys_wide_stats, MOSAICDB, row)
+            append_to_stats(MOSAICDB, row)
     with open(result_file_path(args, EXP_NAME, OLTPIM), 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if row['NUMALocal'] == 'True':
-                append_to_stats(numa_local_stats, OLTPIM, row)
+            if 'indexonly' in row['suffix']:
+                append_to_stats(OLTPIM_IDXONLY, row)
             else:
-                append_to_stats(sys_wide_stats, OLTPIM, row)
+                append_to_stats(OLTPIM, row)
 
-    fig, axes = plt.subplots(2, 1, figsize=(5, 4), constrained_layout=True)
+    fig, axes = plt.subplots(2, 1, figsize=(6, 4), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
-    x_indices = range(len(sys_wide_stats['tput']))
+    x_indices = range(len(X_LABELS))
     x_labels = X_LABELS
 
-    def draw_bar(axis, ydata1, ydata2, ylabel, datalabels):
+    def draw_bar(axis, ydata0, ydata1, ydata2, ylabel, datalabels):
         width = 0.4
-        indices1 = [x - width/2 for x in x_indices]
-        labels1 = [f"{ydata1[x]:.1f}" for x in x_indices]
-        indices2 = [x + width/2 for x in x_indices]
-        labels2 = [f"{ydata2[x]:.1f}" for x in x_indices]
-        rects1 = axis.bar(indices1, ydata1, width, color='white', edgecolor='green', hatch='xx', label='System-wide')
-        rects2 = axis.bar(indices2, ydata2, width, color='white', edgecolor='blue', hatch='oo', label='NUMA-local Workload')
+        labelgen = lambda ys: [f"{y:.1f}" for y in ys]
+        num_y0 = len(ydata0)
+        indices0 = range(num_y0)
+        indices1 = [x - width/2 for x in range(num_y0, len(X_LABELS))]
+        indices2 = [x + width/2 for x in range(num_y0, len(X_LABELS))]
+        rects0 = axis.bar(indices0, ydata0, 1.5*width, color='white', edgecolor='black', hatch='\\\\', label=MOSAICDB)
+        rects1 = axis.bar(indices1, ydata1, width, color='white', edgecolor='pink', hatch='/', label='PIM Index')
+        rects2 = axis.bar(indices2, ydata2, width, color='white', edgecolor='red', hatch='//', label='PIM Index&Versions')
         if datalabels:
-            axis.bar_label(rects1, labels=labels1, padding=3)
-            axis.bar_label(rects2, labels=labels2, padding=3)
+            axis.bar_label(rects0, labels=labelgen(ydata0), padding=3)
+            axis.bar_label(rects1, labels=labelgen(ydata1), padding=3)
+            axis.bar_label(rects2, labels=labelgen(ydata2), padding=3)
         axis.set_xticks(x_indices)
         axis.set_xticklabels('')
         axis.set_xlabel('')
@@ -103,8 +108,9 @@ def plot(args):
         axis.yaxis.set_major_formatter(formatter)
         axis.minorticks_off()
         axis.set_xlim(-0.5, len(x_indices) - 0.5)
-    draw_bar(axes[0], sys_wide_stats['tput'], numa_local_stats['tput'], 'Throughput (MTPS)', True)
-    draw_bar(axes[1], sys_wide_stats['totalbw'], numa_local_stats['totalbw'], 'Memory Traffic\nPer Txn (KBPT)', False)
+        axis.axvline(num_y0 - 0.5, color='black', linestyle='--', linewidth=1)
+    draw_bar(axes[0], stats['tput'][MOSAICDB], stats['tput'][OLTPIM_IDXONLY], stats['tput'][OLTPIM], 'Throughput (MTPS)', True)
+    draw_bar(axes[1], stats['totalbw'][MOSAICDB], stats['totalbw'][OLTPIM_IDXONLY], stats['totalbw'][OLTPIM], 'Memory Traffic\nPer Txn (KBPT)', False)
     axes[1].legend(loc='upper right', ncol=1)
     axes[1].set_xticklabels(x_labels)
     plt.savefig(result_plot_path(args, EXP_NAME))
