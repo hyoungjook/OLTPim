@@ -21,7 +21,7 @@ WORKLOAD_SIZES = {
 }
 GC_OPTS = {
     'YCSB-C': [True],
-    'YCSB-B': [True],
+    'YCSB-B': [False, True],
     'YCSB-A': [False, True],
     'YCSB-I1': [True],
     'YCSB-I2': [True],

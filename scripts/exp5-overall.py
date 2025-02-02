@@ -31,6 +31,15 @@ def plot(args):
         'pimrd': {MOSAICDB: [], OLTPIM: []},
         'pimwr': {MOSAICDB: [], OLTPIM: []}
     }
+    ycsbb_nogc = {
+        'size': {MOSAICDB: [], OLTPIM: []},
+        'tput': {MOSAICDB: [], OLTPIM: []},
+        'p99': {MOSAICDB: [], OLTPIM: []},
+        'dramrd': {MOSAICDB: [], OLTPIM: []},
+        'dramwr': {MOSAICDB: [], OLTPIM: []},
+        'pimrd': {MOSAICDB: [], OLTPIM: []},
+        'pimwr': {MOSAICDB: [], OLTPIM: []}
+    }
     ycsba = {
         'size': {MOSAICDB: [], OLTPIM: []},
         'tput': {MOSAICDB: [], OLTPIM: []},
@@ -89,14 +98,19 @@ def plot(args):
             for row in reader:
                 system = row['system']
                 workload = row['workload']
+                gc = (row['GC'] == 'True')
                 if workload == 'YCSB-C':
                     ycsbc['size'][system].append(int(row['workload_size']))
                     append_to_stats(ycsbc, system, row)
                 elif workload == 'YCSB-B':
-                    ycsbb['size'][system].append(int(row['workload_size']))
-                    append_to_stats(ycsbb, system, row)
+                    if gc:
+                        ycsbb['size'][system].append(int(row['workload_size']))
+                        append_to_stats(ycsbb, system, row)
+                    else:
+                        ycsbb_nogc['size'][system].append(int(row['workload_size']))
+                        append_to_stats(ycsbb_nogc, system, row)
                 elif workload == 'YCSB-A':
-                    if row['GC'] == 'True':
+                    if gc:
                         ycsba['size'][system].append(int(row['workload_size']))
                         append_to_stats(ycsba, system, row)
                     else:
@@ -158,7 +172,7 @@ def plot(args):
         else: axis.set_ylim(bottom=0)
         axis.title.set_text(title)
     tput_plot(axes[0][0], ycsbc, x_indices, size_labels, 'YCSB-C')
-    tput_plot(axes[0][1], ycsbb, x_indices, size_labels, 'YCSB-B')
+    tput_plot(axes[0][1], ycsbb, x_indices, size_labels, 'YCSB-B', ycsbb_nogc)
     tput_plot(axes[0][2], ycsba, x_indices, size_labels, 'YCSB-A', ycsba_nogc)
     tput_plot(axes[0][3], ycsbi, x_indices, ycsbi_labels, 'YCSB-I')
     tput_plot(axes[0][4], tpcc, x_indices, tpcc_labels, 'TPC-C', tpcc_nogc, top_ylim=False)
