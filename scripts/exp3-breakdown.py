@@ -32,6 +32,7 @@ BREAKDOWNS = [
     (OLTPIM, False, False, None),
 ]
 BENCH_SECONDS = 60
+BENCH_THREADS = 64
 HUGETLB_SIZE_GB = 180
 OLTPIM_IDXONLY = OLTPIM + ' (indexonly)'
 
@@ -124,7 +125,7 @@ if __name__ == "__main__":
             for workload_size in WORKLOAD_SIZES:
                 for system, no_numa_local, no_interleave, suffix in BREAKDOWNS:
                     run(args, system, workload, workload_size, 
-                        BENCH_SECONDS, HUGETLB_SIZE_GB,
+                        BENCH_SECONDS, BENCH_THREADS, HUGETLB_SIZE_GB,
                         no_numa_local_workload=no_numa_local,
                         no_interleave=no_interleave,
                         executable_suffix=suffix)

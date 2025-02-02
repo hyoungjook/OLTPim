@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument('--workload', default=None, choices=[
         'YCSB-A', 'YCSB-B', 'YCSB-C',
         'YCSB-I1', 'YCSB-I2', 'YCSB-I3', 'YCSB-I4',
-        'TPC-C', 'TPC-CR'
+        'TPC-C', 'TPC-CA', 'TPC-CR'
     ], help='Workload to evaluate.')
     parser.add_argument('--workload-size', default=None, type=int,
         help='Table size if YCSB. Scale factor if TPC-C.')
@@ -177,7 +177,11 @@ def tpcc_options(args):
         f'-numa_spread={numa_local}',
         f'-tpcc_scale_factor={scale_factor}'
     ]
-    if args.workload == 'TPC-CR':
+    if args.workload == 'TPC-CA':
+        opts += [
+            '-tpcc_atomic_ytd=1'
+        ]
+    elif args.workload == 'TPC-CR':
         opts += [
             '-tpcc_txn_workload_mix="0,0,0,0,50,50,0,0"'
         ]
@@ -188,10 +192,6 @@ def tpcc_options(args):
 def mosaicdb_options(args):
     if not args.coro_batch_size:
         args.coro_batch_size = 8
-    if 'TPC-C' in args.workload:
-        if args.workload_size < args.threads * args.coro_batch_size:
-            args.coro_batch_size = args.workload_size // args.threads
-            print(f'WARNING: coro_batch_size set to {args.coro_batch_size} to meet TPC-C requirement')
     opts = [
         f'-coro_batch_size={args.coro_batch_size}',
         '-coro_scheduler=0'
@@ -202,10 +202,6 @@ def oltpim_options(args):
     num_ranks_per_numa = args.num_upmem_ranks // args.numa_nodes
     if not args.coro_batch_size:
         args.coro_batch_size = 256
-    if 'TPC-C' in args.workload:
-        if args.workload_size < args.threads * args.coro_batch_size:
-            args.coro_batch_size = args.workload_size // args.threads
-            print(f'WARNING: coro_batch_size set to {args.coro_batch_size} to meet TPC-C requirement')
     interleave = 1 if args.interleave else 0
     opts = [
         f'-coro_batch_size={args.coro_batch_size}',
@@ -281,7 +277,7 @@ def parse_result(result):
     return values_dict
 
 def print_header():
-    csv_header = 'system,suffix,workload,workload_size,corobatchsize,' + \
+    csv_header = 'system,suffix,workload,workload_size,threads,corobatchsize,' + \
         'log,NUMALocal,GC,Interleave,PIMMultiget,' + \
         'time(s),commits,aborts,p99(ms),' + \
         'Epkg(J),Eram(J),' + \
@@ -294,7 +290,8 @@ def print_header():
 
 def print_result(args, values):
     csv = f"{args.system},{args.executable_suffix},{args.workload},{args.workload_size}," + \
-        f"{args.coro_batch_size},{args.logging},{args.numa_local_workload}," + \
+        f"{args.threads},{args.coro_batch_size}," + \
+        f"{args.logging},{args.numa_local_workload}," + \
         f"{args.gc},{args.interleave},{args.pim_multiget}," + \
         f"{values['time(s)']},{values['commits']},{values['aborts']},{values['p99(ms)']}," + \
         f"{values['Epkg(J)']},{values['Eram(J)']}," + \

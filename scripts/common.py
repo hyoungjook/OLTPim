@@ -15,8 +15,6 @@ def parse_args():
         help='Path of the logging directory.')
     parser.add_argument('--result-dir', type=str, required=True,
         help='Path of directory in which the CSV result file will be stored.')
-    parser.add_argument('--bench-threads', type=int, default=os.cpu_count(),
-        help='Number of worker threads.')
     parser.add_argument('--num-upmem-ranks', type=int, default=None,
         help='Total number of UPMEM ranks. Used if system="OLTPim".')
     parser.add_argument('--systems', default=None, choices=[MOSAICDB, OLTPIM, 'both'],
@@ -60,7 +58,7 @@ def print_header(args):
             subprocess.run(cmd)
 
 def run(args, system, workload, workload_size,
-        bench_seconds, hugetlb_size_gb,
+        bench_seconds, bench_threads, hugetlb_size_gb,
         coro_batch_size=None, no_logging=False,
         no_numa_local_workload=False, no_pim_multiget=False,
         no_gc=False, no_interleave=False,
@@ -78,7 +76,7 @@ def run(args, system, workload, workload_size,
         '--workload', workload,
         '--workload-size', str(workload_size),
         '--seconds', str(bench_seconds),
-        '--threads', str(args.bench_threads),
+        '--threads', str(bench_threads),
     ]
     if args.num_upmem_ranks:
         cmd += ['--num-upmem-ranks', str(args.num_upmem_ranks)]
