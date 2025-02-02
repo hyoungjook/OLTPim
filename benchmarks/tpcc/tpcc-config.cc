@@ -33,7 +33,7 @@ DEFINE_uint32(tpcc_cold_item_pct, 0, "The percentage of cold item records when r
 
 DEFINE_bool(tpcc_coro_local_wh, true, "Whether to use coro-local warehouse");
 DEFINE_bool(tpcc_numa_local, false, "Whether to use numa-local tables and txns");
-DEFINE_bool(tpcc_less_contention, false, "Whether to use less-contention workload.");
+DEFINE_bool(tpcc_atomic_ytd, false, "Whether to use atomics for w.ytd and d.ytd.");
 
 int g_wh_temperature = 0;
 uint g_microbench_rows = 10;  // this many rows
@@ -54,6 +54,8 @@ unsigned g_txn_workload_mix[8] = {
     45, 43, 0, 4, 4, 4, 0, 0};  // default TPC-C workload mix
 
 util::aligned_padded_elem<std::atomic<uint64_t>> *g_district_ids = nullptr;
+util::aligned_padded_elem<std::atomic<float>> *g_warehouse_ytds = nullptr;
+util::aligned_padded_elem<std::atomic<float>> *g_district_ytds = nullptr;
 
 SuppStockMap supp_stock_map(10000);  // value ranges 0 ~ 9999 ( modulo by 10k )
 
@@ -189,11 +191,6 @@ void tpcc_parse_options() {
                   NumWarehouses());
   }
 
-  if (FLAGS_tpcc_less_contention) {
-    // Less contention includes new_order_fast_id_gen
-    FLAGS_tpcc_new_order_fast_id_gen = true;
-  }
-
   if (ermia::config::verbose) {
     std::cerr << "tpcc settings:" << std::endl;
     std::cerr << "  scale_factor: " << FLAGS_tpcc_scale_factor << std::endl;
@@ -213,6 +210,7 @@ void tpcc_parse_options() {
          << std::endl;
     std::cerr << "  new_order_fast_id_gen        : " << FLAGS_tpcc_new_order_fast_id_gen
          << std::endl;
+    std::cerr << "  atomic                       : " << FLAGS_tpcc_atomic_ytd << std::endl;
     std::cerr << "  uniform_item_dist            : " << FLAGS_tpcc_uniform_item_dist << std::endl;
     std::cerr << "  order_status_scan_hack       : " << FLAGS_tpcc_order_status_scan_hack
          << std::endl;

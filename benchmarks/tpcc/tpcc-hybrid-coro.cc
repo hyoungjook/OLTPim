@@ -1103,9 +1103,9 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_payment(ermia::transaction *txn,
   checker::SanityCheckWarehouse(&k_w, v_w);
 #endif
 
-  warehouse::value v_w_new(*v_w);
-  v_w_new.w_ytd += paymentAmount;
-  if (!FLAGS_tpcc_less_contention) {
+  if (!FLAGS_tpcc_atomic_ytd) {
+    warehouse::value v_w_new(*v_w);
+    v_w_new.w_ytd += paymentAmount;
     rc = tbl_warehouse(warehouse_id)
              ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w),
                             Encode(str(arenas[idx], Size(v_w_new)), v_w_new));
@@ -1126,9 +1126,9 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_payment(ermia::transaction *txn,
   checker::SanityCheckDistrict(&k_d, v_d);
 #endif
 
-  district::value v_d_new(*v_d);
-  v_d_new.d_ytd += paymentAmount;
-  if (!FLAGS_tpcc_less_contention) {
+  if (!FLAGS_tpcc_atomic_ytd) {
+    district::value v_d_new(*v_d);
+    v_d_new.d_ytd += paymentAmount;
     rc = tbl_district(warehouse_id)
              ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d),
                             Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
@@ -1227,6 +1227,7 @@ ermia::coro::task<rc_t> tpcc_hybrid_worker::txn_payment(ermia::transaction *txn,
 #ifndef CORO_BATCH_COMMIT
   TryCatchCoro(db->Commit(txn));
 #endif
+  if (FLAGS_tpcc_atomic_ytd) AtomicAddYtd(warehouse_id, districtID, paymentAmount);
   co_return {RC_TRUE};
 }  // payment
 

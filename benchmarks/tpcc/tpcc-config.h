@@ -38,7 +38,7 @@ DECLARE_uint32(tpcc_cold_item_pct);
 
 DECLARE_bool(tpcc_coro_local_wh);
 DECLARE_bool(tpcc_numa_local);
-DECLARE_bool(tpcc_less_contention);
+DECLARE_bool(tpcc_atomic_ytd);
 
 extern int g_wh_temperature;
 extern uint g_microbench_rows;  // this many rows
@@ -52,6 +52,9 @@ extern util::aligned_padded_elem<std::atomic<uint64_t>> *g_district_ids ;
 
 typedef std::vector<std::vector<std::pair<int32_t, int32_t>>> SuppStockMap;
 extern SuppStockMap supp_stock_map;
+
+extern util::aligned_padded_elem<std::atomic<float>> *g_warehouse_ytds;
+extern util::aligned_padded_elem<std::atomic<float>> *g_district_ytds;
 
 // config constants
 struct Nation {
@@ -86,6 +89,26 @@ static inline uint64_t FastNewOrderIdGen(unsigned warehouse,
                                          unsigned district) {
   return NewOrderIdHolder(warehouse, district)
       .fetch_add(1, std::memory_order_acq_rel);
+}
+
+static inline void atomic_float_fetch_add(std::atomic<float> &v,
+                                          float amount) {
+  float oldv = v.load(std::memory_order_relaxed);
+  float newv;
+  do {newv = oldv + amount;}
+  while (!v.compare_exchange_weak(oldv, newv,
+    std::memory_order_release, std::memory_order_relaxed));
+}
+
+static inline void AtomicAddYtd(unsigned warehouse, unsigned district,
+                                float amount) {
+  ASSERT(warehouse >= 1 && warehouse <= NumWarehouses());
+  ASSERT(district >= 1 && district <= NumDistrictsPerWarehouse());
+  
+  atomic_float_fetch_add(g_warehouse_ytds[warehouse - 1].elem, amount);
+  const unsigned idx =
+      (warehouse - 1) * NumDistrictsPerWarehouse() + (district - 1);
+  atomic_float_fetch_add(g_district_ytds[idx].elem, amount);
 }
 
 struct eqstr {
@@ -1647,6 +1670,22 @@ f(oorder); f(oorder_c_id_idx); f(order_line); f(stock); f(stock_data); f(warehou
           reinterpret_cast<util::aligned_padded_elem<std::atomic<uint64_t>> *>(px);
       for (size_t i = 0; i < NumWarehouses() * NumDistrictsPerWarehouse(); i++)
         new (&g_district_ids[i]) std::atomic<uint64_t>(3001);
+    }
+    if (FLAGS_tpcc_atomic_ytd) {
+      void *const pw = memalign(
+          CACHELINE_SIZE, sizeof(util::aligned_padded_elem<std::atomic<float>>) *
+                              NumWarehouses());
+      void *const pd = memalign(
+          CACHELINE_SIZE, sizeof(util::aligned_padded_elem<std::atomic<float>>) *
+                              NumWarehouses() * NumDistrictsPerWarehouse());
+      g_warehouse_ytds =
+          reinterpret_cast<util::aligned_padded_elem<std::atomic<float>> *>(pw);
+      g_district_ytds =
+          reinterpret_cast<util::aligned_padded_elem<std::atomic<float>> *>(pd);
+      for (size_t i = 0; i < NumWarehouses(); i++)
+        new (&g_warehouse_ytds[i]) std::atomic<float>(300000);
+      for (size_t i = 0; i < NumWarehouses() * NumDistrictsPerWarehouse(); i++)
+        new (&g_district_ytds[i]) std::atomic<float>(300000);
     }
   }
 

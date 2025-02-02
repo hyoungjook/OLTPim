@@ -1350,9 +1350,9 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
   checker::SanityCheckWarehouse(&k_w, v_w);
 #endif
 
+  if (!FLAGS_tpcc_atomic_ytd) {
     warehouse::value v_w_new(*v_w);
     v_w_new.w_ytd += paymentAmount;
-  if (!FLAGS_tpcc_less_contention) {
     rc = co_await tbl_warehouse(warehouse_id)
              ->pim_UpdateRecord(txn, pk_w,
                             Encode(str(arenas[idx], Size(v_w_new)), v_w_new));
@@ -1374,9 +1374,9 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
   checker::SanityCheckDistrict(&k_d, v_d);
 #endif
 
-  district::value v_d_new(*v_d);
-  v_d_new.d_ytd += paymentAmount;
-  if (!FLAGS_tpcc_less_contention) {
+  if (!FLAGS_tpcc_atomic_ytd) {
+    district::value v_d_new(*v_d);
+    v_d_new.d_ytd += paymentAmount;
     rc = co_await tbl_district(warehouse_id)
              ->pim_UpdateRecord(txn, pk_d,
                             Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
@@ -1467,6 +1467,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment(ermia::transaction *txn,
   rc = co_await txn->oltpim_commit();
   TryCatchOltpim(rc);
 #endif
+  if (FLAGS_tpcc_atomic_ytd) AtomicAddYtd(warehouse_id, districtID, paymentAmount);
   co_return {RC_TRUE};
 }  // payment
 
@@ -1555,15 +1556,13 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment_multiget(ermia::transact
     warehouse::value v_w;
     district::value v_d;
     Decode(w_value, v_w);
-    v_w.w_ytd += paymentAmount;
-    if (!FLAGS_tpcc_less_contention) {
+    Decode(d_value, v_d);
+    if (!FLAGS_tpcc_atomic_ytd) {
+      v_w.w_ytd += paymentAmount;
       tbl_warehouse(warehouse_id)->pim_UpdateRecordBegin(txn, 
         tpcc_key64::warehouse(warehouse::key(warehouse_id)),
         Encode(str(arenas[idx], Size(v_w)), v_w), &req_w_update);
-    }
-    Decode(d_value, v_d);
-    v_d.d_ytd += paymentAmount;
-    if (!FLAGS_tpcc_less_contention) {
+      v_d.d_ytd += paymentAmount;
       tbl_district(warehouse_id)->pim_UpdateRecordBegin(txn, 
         tpcc_key64::district(district::key(warehouse_id, districtID)),
         Encode(str(arenas[idx], Size(v_d)), v_d), &req_d_update);
@@ -1601,7 +1600,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment_multiget(ermia::transact
         Encode(str(arenas[idx], Size(v_h)), v_h), &req_h_insert);
     }
     rc_t _rc;
-    if (!FLAGS_tpcc_less_contention) {
+    if (!FLAGS_tpcc_atomic_ytd) {
       _rc = co_await tbl_warehouse(warehouse_id)->pim_UpdateRecordEnd(txn, &req_w_update);
       if (_rc._val != RC_TRUE) rc = _rc;
       _rc = co_await tbl_district(warehouse_id)->pim_UpdateRecordEnd(txn, &req_d_update);
@@ -1618,6 +1617,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment_multiget(ermia::transact
   rc = co_await txn->oltpim_commit();
   TryCatchOltpim(rc);
 #endif
+  if (FLAGS_tpcc_atomic_ytd) AtomicAddYtd(warehouse_id, districtID, paymentAmount);
   co_return {RC_TRUE};
 }
 

@@ -18,7 +18,7 @@ class tpcc_sc_worker : public bench_worker, public tpcc_worker_mixin {
   total_batches = ermia::config::worker_threads *
     (ermia::config::coro_batch_size + ermia::config::coro_cold_queue_size);
   memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
-  ALWAYS_ASSERT(!FLAGS_tpcc_less_contention); // not implemented
+  ALWAYS_ASSERT(!FLAGS_tpcc_atomic_ytd); // not implemented
 }
 
   // XXX(stephentu): tune this

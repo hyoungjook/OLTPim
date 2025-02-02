@@ -16,7 +16,7 @@ class tpcc_sequential_worker : public bench_worker, public tpcc_worker_mixin {
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
         tpcc_worker_mixin(partitions) {
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
-    ALWAYS_ASSERT(!FLAGS_tpcc_less_contention); // not implemented
+    ALWAYS_ASSERT(!FLAGS_tpcc_atomic_ytd); // not implemented
   }
 
   // XXX(stephentu): tune this
