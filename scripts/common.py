@@ -17,20 +17,17 @@ def parse_args():
         help='Path of directory in which the CSV result file will be stored.')
     parser.add_argument('--num-upmem-ranks', type=int, default=None,
         help='Total number of UPMEM ranks. Used if system="OLTPim".')
-    parser.add_argument('--systems', default=None, choices=[MOSAICDB, OLTPIM, 'both'],
+    parser.add_argument('--systems', required=True, choices=[MOSAICDB, OLTPIM, 'both'],
         help='Systems to evaluate. Choices: [MosaicDB, OLTPim, both]')
     parser.add_argument('--measure-on-upmem-server', action='store_true',
         help='Provide if measuring on UPMEM server.')
-    parser.add_argument('--plot', action='store_true',
-        help='Skip measurement and plot graph with latest result')
     args = parser.parse_args()
-    if not args.plot:
-        if not args.systems:
-            parser.error('--systems is required unless running in --plot mode.')
-        args.systems = {
-            MOSAICDB: (args.systems == 'MosaicDB' or args.systems == 'both'),
-            OLTPIM: (args.systems == 'OLTPim' or args.systems == 'both'),
-        }
+    args.systems = {
+        MOSAICDB: (args.systems == 'MosaicDB' or args.systems == 'both'),
+        OLTPIM: (args.systems == 'OLTPim' or args.systems == 'both'),
+    }
+    if args.systems[OLTPIM] and not args.num_upmem_ranks:
+        parser.error('--num-upmem-ranks required for --system OLTPim.')
     return args
 
 def result_file_path(args, exp_name, system):

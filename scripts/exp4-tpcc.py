@@ -1,7 +1,4 @@
 from common import *
-import csv
-import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
 
 EXP_NAME = 'tpcc'
 WORKLOADS = ['TPC-C']
@@ -23,21 +20,15 @@ GC = [False, True]
 BENCH_SECONDS = 30
 HUGETLB_SIZE_GB = 180
 
-def plot(args):
-    pass
-
 if __name__ == "__main__":
     args = parse_args()
-    if not args.plot:
-        create_result_file(args, EXP_NAME)
-        print_header(args)
-        for workload in WORKLOADS:
-            for workload_size in WORKLOAD_SIZES:
-                for gc in GC:
-                    for system, corobatch_size, threads in TEST_CASES:
-                        run(args, system, workload, workload_size,
-                            BENCH_SECONDS, threads, HUGETLB_SIZE_GB,
-                            coro_batch_size=corobatch_size,
-                            no_gc=(not gc))
-    else:
-        plot(args)
+    create_result_file(args, EXP_NAME)
+    print_header(args)
+    for workload in WORKLOADS:
+        for workload_size in WORKLOAD_SIZES:
+            for gc in GC:
+                for system, corobatch_size, threads in TEST_CASES:
+                    run(args, system, workload, workload_size,
+                        BENCH_SECONDS, threads, HUGETLB_SIZE_GB,
+                        coro_batch_size=corobatch_size,
+                        no_gc=(not gc))

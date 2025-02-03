@@ -1,11 +1,7 @@
 from common import *
-import csv
-import matplotlib.patches as mpatch
-import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
 
 EXP_NAME = 'ycsb'
-SYSTEMS = ['MosaicDB', 'OLTPim']
+SYSTEMS = [MOSAICDB, OLTPIM]
 WORKLOADS = [
     'YCSB-C', 'YCSB-B', 'YCSB-A',
     'YCSB-I1', 'YCSB-I2', 'YCSB-I3', 'YCSB-I4',
@@ -33,21 +29,15 @@ BENCH_SECONDS = lambda workload, size: \
 BENCH_THREADS = 64
 HUGETLB_SIZE_GB = 180
 
-def plot(args):
-    pass
-
 if __name__ == "__main__":
     args = parse_args()
-    if not args.plot:
-        create_result_file(args, EXP_NAME)
-        print_header(args)
-        for workload in WORKLOADS:
-            for workload_size in WORKLOAD_SIZES[workload]:
-                for gc in GC_OPTS[workload]:
-                    for system in SYSTEMS:
-                        run(args, system, workload, workload_size,
-                            BENCH_SECONDS(workload, workload_size), BENCH_THREADS,
-                            HUGETLB_SIZE_GB,
-                            no_gc=(not gc))
-    else:
-        plot(args)
+    create_result_file(args, EXP_NAME)
+    print_header(args)
+    for workload in WORKLOADS:
+        for workload_size in WORKLOAD_SIZES[workload]:
+            for gc in GC_OPTS[workload]:
+                for system in SYSTEMS:
+                    run(args, system, workload, workload_size,
+                        BENCH_SECONDS(workload, workload_size), BENCH_THREADS,
+                        HUGETLB_SIZE_GB,
+                        no_gc=(not gc))
