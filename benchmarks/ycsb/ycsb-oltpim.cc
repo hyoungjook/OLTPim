@@ -13,6 +13,33 @@ extern YcsbWorkload ycsb_workload;
 extern ReadTransactionType g_read_txn_type;
 extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
+/* pim scan callback */
+class pim_ycsb_scan_callback : public ermia::pim::PIMScanCallback {
+private:
+  static constexpr unsigned max_outs_per_interval_ = 16;
+  static constexpr unsigned num_intervals_ = 2;
+  // max_scan_length<=key_interval, then num_intervals is at most 2.
+  // It's 1 if key range exactly fits in an interval, otherwise 2.
+  using request_scan = typename oltpim::request_scan<max_outs_per_interval_>::t;
+  request_scan scan_reqs[num_intervals_];
+public:
+  pim_ycsb_scan_callback(): n(0) {}
+  uint32_t max_outs_per_interval() {return max_outs_per_interval_;}
+  uint32_t num_intervals() {return num_intervals_;}
+  void *scan_req_storage() {return (void*)&scan_reqs;}
+  size_t scan_req_storage_size() {return sizeof(request_scan);}
+  void *get_req_storage() {return nullptr;}
+
+  int n;
+  bool Invoke(const ermia::varstr &value) {
+    memcpy(value_buf, value.data(), sizeof(ycsb_kv::value));
+    n++;
+    return true;
+  }
+  size_t size() {return n;}
+  unsigned char value_buf[sizeof(ycsb_kv::value)];
+};
+
 // You should re-compile this if you want different ops_per_hot_txn
 static constexpr int ops_per_hot_txn_const = 10;
 class ycsb_oltpim_worker : public ycsb_base_worker {
@@ -67,7 +94,10 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   virtual workload_desc_vec get_workload() const override {
     workload_desc_vec w;
     if (ycsb_workload.scan_percent()) {
-      LOG(FATAL) << "Not implemented";
+      w.push_back(workload_desc("0-Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, nullptr,
+        (FLAGS_ycsb_oltpim_multiget ? TxnScanMultiGet : TxnScan)));
+      LOG_IF(FATAL, FLAGS_ycsb_max_scan_size > 16) <<
+        "OLTPim YCSB scan currently supports max scan size up to 16.";
     }
 
     if (FLAGS_ycsb_oltpim_multiget) {
@@ -213,6 +243,14 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
 
   static ermia::coro::task<rc_t> TxnColdUpdate(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
     return static_cast<ycsb_oltpim_worker *>(w)->txn_cold_update(txn, idx);
+  }
+
+  static ermia::coro::task<rc_t> TxnScan(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
+    return static_cast<ycsb_oltpim_worker *>(w)->txn_scan(txn, idx);
+  }
+
+  static ermia::coro::task<rc_t> TxnScanMultiGet(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
+    return static_cast<ycsb_oltpim_worker *>(w)->txn_scan_multiget(txn, idx);
   }
 
   /**
@@ -378,6 +416,48 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       if (_rc._val != RC_TRUE) rc = _rc;
     }
     TryCatchOltpim(rc);
+
+#ifndef CORO_BATCH_COMMIT
+    rc = co_await txn->oltpim_commit();
+    TryCatchOltpim(rc);
+#endif
+    co_return {RC_TRUE};
+  }
+
+  ermia::coro::task<rc_t> txn_scan(ermia::transaction *txn, uint32_t idx) {
+    rc_t rc;
+    for (int i = 0; i < FLAGS_ycsb_ops_per_tx; ++i) {
+      uint64_t start_key = rng_gen_key(true);
+      uint64_t end_key = start_key + rng_gen_scan_length() - 1;
+      pim_ycsb_scan_callback callback;
+      rc = co_await table_index->pim_Scan(
+        txn, start_key, end_key, callback, callback.max_outs_per_interval());
+      ALWAYS_ASSERT(callback.size() <= FLAGS_ycsb_max_scan_size);
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+    }
+
+#ifndef CORO_BATCH_COMMIT
+    rc = co_await txn->oltpim_commit();
+    TryCatchOltpim(rc);
+#endif
+    co_return {RC_TRUE};
+  }
+
+  ermia::coro::task<rc_t> txn_scan_multiget(ermia::transaction *txn, uint32_t idx) {
+    pim_ycsb_scan_callback callbacks[ops_per_hot_txn_const];
+    rc_t rc;
+    for (int j = 0; j < FLAGS_ycsb_ops_per_tx; ++j) {
+      uint64_t start_key = rng_gen_key(true);
+      uint64_t end_key = start_key + rng_gen_scan_length() - 1;
+      table_index->pim_ScanBegin(
+        txn, start_key, end_key, callbacks[j], callbacks[j].max_outs_per_interval());
+    }
+    for (int j = 0; j < FLAGS_ycsb_ops_per_tx; ++j) {
+      rc = co_await table_index->pim_ScanEnd(
+        txn, callbacks[j], callbacks[j].max_outs_per_interval());
+      ALWAYS_ASSERT(callbacks[j].size() <= FLAGS_ycsb_max_scan_size);
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+    }
 
 #ifndef CORO_BATCH_COMMIT
     rc = co_await txn->oltpim_commit();

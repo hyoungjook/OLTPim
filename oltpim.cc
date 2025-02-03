@@ -397,15 +397,15 @@ ConcurrentMasstreeIndex::pim_ScanEnd(transaction *t, pim::PIMScanCallback &callb
       co_await std::suspend_always{};
     }
   }
+  bool all_failed = true;
   for (int i = 0; i < cnt; ++i) {
     auto *req = (request_scan_base*)&scan_req[scan_req_size * i];
     auto status = req->rets.base.status;
     CHECK_VALID_STATUS(status);
-    if (status != STATUS_SUCCESS) {
-      uint16_t rc = (status == STATUS_FAILED) ? RC_FALSE : RC_ABORT_SI_CONFLICT;
-      co_return {rc};
-    }
+    if (status == STATUS_SUCCESS) all_failed = false;
+    else if (status != STATUS_FAILED) co_return {RC_ABORT_SI_CONFLICT};
   }
+  if (all_failed) co_return {RC_FALSE};
 
   if (!IsPrimary()) { // Secondary: query again
     auto *xc = t->xc;

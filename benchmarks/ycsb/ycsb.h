@@ -91,6 +91,8 @@ struct YcsbWorkload {
   bool distinct_keys_;
 };
 
+extern YcsbWorkload ycsb_workload;
+
 class ycsb_table_loader : public bench_loader {
  public:
   ycsb_table_loader(unsigned long seed, ermia::Engine *db,
@@ -115,13 +117,17 @@ class ycsb_bench_runner : public bench_runner {
   ycsb_bench_runner(ermia::Engine *db) : bench_runner(db) {
     ycsb_create_db(db);
 #if defined(OLTPIM)
+    // If txn_scan in workload, arbitrarily set PIM key interval to 2^4=16
+    // to test max_scan_length=2,4,8,16 in the paper.
+    // TODO change bits to cmd line option?
+    uint64_t interval_bits = (ycsb_workload.scan_percent() > 0) ? 4 : 0;
     if (!FLAGS_ycsb_numa_local) {
-      ermia::pim::set_index_partition_interval("USERTABLE", 0, false, 0);
+      ermia::pim::set_index_partition_interval("USERTABLE", interval_bits, false, 0);
     }
     else {
       for (int numa_id = 0; numa_id < ermia::config::numa_nodes; ++numa_id) {
         std::string name = std::string("USERTABLE") + std::to_string(numa_id);
-        ermia::pim::set_index_partition_interval(name.c_str(), 0, true, (uint32_t)numa_id);
+        ermia::pim::set_index_partition_interval(name.c_str(), interval_bits, true, (uint32_t)numa_id);
       }
     }
     ermia::pim::finalize_index_setup();

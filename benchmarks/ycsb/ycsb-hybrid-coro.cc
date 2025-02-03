@@ -58,7 +58,7 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
   virtual workload_desc_vec get_workload() const override {
     workload_desc_vec w;
     if (ycsb_workload.scan_percent()) {
-      LOG(FATAL) << "Not implemented";
+      w.push_back(workload_desc("0-Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, nullptr, TxnScan));
     }
 
     LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro) << "Read txn type must be hybrid-coro";
@@ -178,6 +178,10 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
 
   static ermia::coro::task<rc_t> TxnColdUpdate(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
     return static_cast<ycsb_cs_hybrid_worker *>(w)->txn_cold_update(txn, idx);
+  }
+
+  static ermia::coro::task<rc_t> TxnScan(bench_worker *w, ermia::transaction *txn, uint32_t idx) {
+    return static_cast<ycsb_cs_hybrid_worker *>(w)->txn_scan(txn, idx);
   }
 
   /**
@@ -516,6 +520,22 @@ class ycsb_cs_hybrid_worker : public ycsb_base_worker {
       new (v.data()) ycsb_kv::value("a");
       auto rc = co_await table_index->task_UpdateRecord(txn, k, v);  // Modify-write
       TryCatchCoro(rc);
+    }
+
+#ifndef CORO_BATCH_COMMIT
+    TryCatchCoro(db->Commit(txn));
+#endif
+    co_return {RC_TRUE};
+  }
+
+  ermia::coro::task<rc_t> txn_scan(ermia::transaction *txn, uint32_t idx) {
+    for (int i = 0; i < FLAGS_ycsb_ops_per_tx; ++i) {
+      ScanRange range = GenerateScanRange(txn);
+      ycsb_scan_callback callback;
+      rc_t rc = co_await table_index->task_Scan(
+        txn, range.start_key, &range.end_key, callback);
+      ALWAYS_ASSERT(callback.size() <= FLAGS_ycsb_max_scan_size);
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
     }
 
 #ifndef CORO_BATCH_COMMIT
