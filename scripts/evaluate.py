@@ -27,6 +27,7 @@ def parse_args():
     parser.add_argument('--workload', default=None, choices=[
         'YCSB-A', 'YCSB-B', 'YCSB-C',
         'YCSB-I1', 'YCSB-I2', 'YCSB-I3', 'YCSB-I4',
+        'YCSB-S2', 'YCSB-S4', 'YCSB-S8', 'YCSB-S16',
         'TPC-C', 'TPC-CA', 'TPC-CR'
     ], help='Workload to evaluate.')
     parser.add_argument('--workload-size', default=None, type=int,
@@ -153,6 +154,10 @@ def ycsb_options(args):
         case 'YCSB-I2': ycsb_type = 'I2'
         case 'YCSB-I3': ycsb_type = 'I3'
         case 'YCSB-I4': ycsb_type = 'I4'
+        case 'YCSB-S2': ycsb_type = 'S'; ycsb_scan_length = 2
+        case 'YCSB-S4': ycsb_type = 'S'; ycsb_scan_length = 4
+        case 'YCSB-S8': ycsb_type = 'S'; ycsb_scan_length = 8
+        case 'YCSB-S16': ycsb_type = 'S'; ycsb_scan_length = 16
         case _: raise ValueError(f'Invalid workload={args.workload}')
     opts = [
         '-ycsb_ops_per_hot_tx=10',
@@ -165,6 +170,8 @@ def ycsb_options(args):
         f'-ycsb_hot_table_size={table_size}',
         f'-ycsb_workload={ycsb_type}'
     ]
+    if ycsb_type == 'S':
+        opts += [f'-ycsb_max_scan_size={ycsb_scan_length}']
     if args.system == 'OLTPim' and args.pim_multiget:
         opts += ['-ycsb_oltpim_multiget=1']
     return opts

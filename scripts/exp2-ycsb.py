@@ -5,6 +5,7 @@ SYSTEMS = [MOSAICDB, OLTPIM]
 WORKLOADS = [
     'YCSB-C', 'YCSB-B', 'YCSB-A',
     'YCSB-I1', 'YCSB-I2', 'YCSB-I3', 'YCSB-I4',
+    'YCSB-S2', 'YCSB-S4', 'YCSB-S8', 'YCSB-S16',
 ]
 WORKLOAD_SIZES = {
     'YCSB-C': [10 ** 6, 10 ** 7, 10 ** 8, 10 ** 9],
@@ -14,6 +15,10 @@ WORKLOAD_SIZES = {
     'YCSB-I2': [10 ** 8],
     'YCSB-I3': [10 ** 8],
     'YCSB-I4': [10 ** 8],
+    'YCSB-S2': [10 ** 8],
+    'YCSB-S4': [10 ** 8],
+    'YCSB-S8': [10 ** 8],
+    'YCSB-S16': [10 ** 8],
 }
 GC_OPTS = {
     'YCSB-C': [True],
@@ -23,7 +28,14 @@ GC_OPTS = {
     'YCSB-I2': [True],
     'YCSB-I3': [True],
     'YCSB-I4': [True],
+    'YCSB-S2': [True],
+    'YCSB-S4': [True],
+    'YCSB-S8': [True],
+    'YCSB-S16': [True],
 }
+COROBATCH_SIZE = lambda system, workload: \
+    8 if system == MOSAICDB else (128 if 'YCSB-S' in workload else 256)
+
 BENCH_SECONDS = lambda workload, size: \
     30 if (workload == 'YCSB-A' and size == 10**9) else 60
 BENCH_THREADS = 64
@@ -40,4 +52,5 @@ if __name__ == "__main__":
                     run(args, system, workload, workload_size,
                         BENCH_SECONDS(workload, workload_size), BENCH_THREADS,
                         HUGETLB_SIZE_GB,
+                        coro_batch_size=COROBATCH_SIZE(system, workload),
                         no_gc=(not gc))
