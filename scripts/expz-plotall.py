@@ -82,7 +82,8 @@ def plot_overall(args):
         'dramrd': {MOSAICDB: [], OLTPIM: []},
         'dramwr': {MOSAICDB: [], OLTPIM: []},
         'pimrd': {MOSAICDB: [], OLTPIM: []},
-        'pimwr': {MOSAICDB: [], OLTPIM: []}
+        'pimwr': {MOSAICDB: [], OLTPIM: []},
+        'totalbw': {MOSAICDB: [], OLTPIM: []},
     }
     ycsbb = {
         'size': {MOSAICDB: [], OLTPIM: []},
@@ -91,7 +92,8 @@ def plot_overall(args):
         'dramrd': {MOSAICDB: [], OLTPIM: []},
         'dramwr': {MOSAICDB: [], OLTPIM: []},
         'pimrd': {MOSAICDB: [], OLTPIM: []},
-        'pimwr': {MOSAICDB: [], OLTPIM: []}
+        'pimwr': {MOSAICDB: [], OLTPIM: []},
+        'totalbw': {MOSAICDB: [], OLTPIM: []},
     }
     ycsba = {
         'size': {MOSAICDB: [], OLTPIM: []},
@@ -100,7 +102,8 @@ def plot_overall(args):
         'dramrd': {MOSAICDB: [], OLTPIM: []},
         'dramwr': {MOSAICDB: [], OLTPIM: []},
         'pimrd': {MOSAICDB: [], OLTPIM: []},
-        'pimwr': {MOSAICDB: [], OLTPIM: []}
+        'pimwr': {MOSAICDB: [], OLTPIM: []},
+        'totalbw': {MOSAICDB: [], OLTPIM: []},
     }
     ycsbi = {
         'ins-ratio': {MOSAICDB: [], OLTPIM: []},
@@ -109,7 +112,8 @@ def plot_overall(args):
         'dramrd': {MOSAICDB: [], OLTPIM: []},
         'dramwr': {MOSAICDB: [], OLTPIM: []},
         'pimrd': {MOSAICDB: [], OLTPIM: []},
-        'pimwr': {MOSAICDB: [], OLTPIM: []}
+        'pimwr': {MOSAICDB: [], OLTPIM: []},
+        'totalbw': {MOSAICDB: [], OLTPIM: []},
     }
     ycsbs = {
         'scan-len': {MOSAICDB: [], OLTPIM: []},
@@ -118,7 +122,8 @@ def plot_overall(args):
         'dramrd': {MOSAICDB: [], OLTPIM: []},
         'dramwr': {MOSAICDB: [], OLTPIM: []},
         'pimrd': {MOSAICDB: [], OLTPIM: []},
-        'pimwr': {MOSAICDB: [], OLTPIM: []}
+        'pimwr': {MOSAICDB: [], OLTPIM: []},
+        'totalbw': {MOSAICDB: [], OLTPIM: []},
     }
     tpcc = {
         'threads': {MOSAICDB: [], OLTPIM: []},
@@ -127,15 +132,22 @@ def plot_overall(args):
         'dramrd': {MOSAICDB: [], OLTPIM: []},
         'dramwr': {MOSAICDB: [], OLTPIM: []},
         'pimrd': {MOSAICDB: [], OLTPIM: []},
-        'pimwr': {MOSAICDB: [], OLTPIM: []}
+        'pimwr': {MOSAICDB: [], OLTPIM: []},
+        'totalbw': {MOSAICDB: [], OLTPIM: []},
     }
     def append_to_stats(workload_stats, system, row):
         workload_stats['tput'][system].append(float(row['commits']) / float(row['time(s)']) / 1000000)
         workload_stats['p99'][system].append(float(row['p99(ms)']))
-        workload_stats['dramrd'][system].append(float(row['dram.rd(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
-        workload_stats['dramwr'][system].append(float(row['dram.wr(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
-        workload_stats['pimrd'][system].append(float(row['pim.rd(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
-        workload_stats['pimwr'][system].append(float(row['pim.wr(MiB)']) / float(row['commits']) * (1024*1024*1024/1000000))
+        per_txn_bw = lambda name: float(row[name]) / float(row['commits']) * (1024*1024*1024/1000000)
+        dramrd = per_txn_bw('dram.rd(MiB)')
+        dramwr = per_txn_bw('dram.wr(MiB)')
+        pimrd = per_txn_bw('pim.rd(MiB)')
+        pimwr = per_txn_bw('pim.wr(MiB)')
+        workload_stats['dramrd'][system].append(dramrd)
+        workload_stats['dramwr'][system].append(dramwr)
+        workload_stats['pimrd'][system].append(pimrd)
+        workload_stats['pimwr'][system].append(pimwr)
+        workload_stats['totalbw'][system].append(dramrd + dramwr + pimrd + pimwr)
     for system in SYSTEMS:
         with open(result_file_path(args, EXP_NAME_1, system), 'r') as f:
             reader = csv.DictReader(f)
@@ -189,8 +201,7 @@ def plot_overall(args):
                         tpcc['threads'][system].append(int(row['threads']))
                         append_to_stats(tpcc, system, row)
 
-    # Overall
-    fig, axes = plt.subplots(2, 6, figsize=(12, 4), constrained_layout=True)
+    fig, axes = plt.subplots(2, 6, figsize=(12, 3), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
     x_indices = range(len(ycsbc['size'][MOSAICDB]))
     size_labels = [SIZE_TO_LABEL[ycsbc['size'][MOSAICDB][x]] for x in x_indices]
@@ -218,10 +229,10 @@ def plot_overall(args):
         else: axis.set_ylim(bottom=0)
         axis.title.set_text(title)
     tput_plot(axes[0][0], ycsbc, x_indices, size_labels, 'YCSB-C')
-    tput_plot(axes[0][1], ycsbb, x_indices, size_labels, 'YCSB-B')
-    tput_plot(axes[0][2], ycsba, x_indices, size_labels, 'YCSB-A')
-    tput_plot(axes[0][3], ycsbi, x_indices, ycsbi_labels, 'YCSB-I')
-    tput_plot(axes[0][4], ycsbs, x_indices, ycsbs_labels, 'YCSB-S')
+    tput_plot(axes[0][1], ycsbs, x_indices, ycsbs_labels, 'YCSB-S')
+    tput_plot(axes[0][2], ycsbb, x_indices, size_labels, 'YCSB-B')
+    tput_plot(axes[0][3], ycsba, x_indices, size_labels, 'YCSB-A')
+    tput_plot(axes[0][4], ycsbi, x_indices, ycsbi_labels, 'YCSB-I')
     tput_plot(axes[0][5], tpcc, x_indices, tpcc_labels, 'TPC-C', top_ylim=False)
     axes[0][0].set_ylabel('Throughput (MTPS)')
     axes[0][1].set_yticklabels('')
@@ -230,16 +241,11 @@ def plot_overall(args):
     axes[0][4].set_yticklabels('')
 
     dram_ylim = max(
-        [dr + dw for dr, dw in zip(ycsbc['dramrd'][MOSAICDB], ycsbc['dramwr'][MOSAICDB])] +
-        [dr + dw for dr, dw in zip(ycsbb['dramrd'][MOSAICDB], ycsbb['dramwr'][MOSAICDB])] +
-        [dr + dw for dr, dw in zip(ycsba['dramrd'][MOSAICDB], ycsba['dramwr'][MOSAICDB])] +
-        [dr + dw for dr, dw in zip(ycsbi['dramrd'][MOSAICDB], ycsbi['dramwr'][MOSAICDB])] +
-        [dr + dw for dr, dw in zip(ycsbs['dramrd'][MOSAICDB], ycsbs['dramwr'][MOSAICDB])] +
-        [dr + dw + pr + pw for dr, dw, pr, pw in zip(ycsbc['dramrd'][OLTPIM], ycsbc['dramwr'][OLTPIM], ycsbc['pimrd'][OLTPIM], ycsbc['pimwr'][OLTPIM])] +
-        [dr + dw + pr + pw for dr, dw, pr, pw in zip(ycsbb['dramrd'][OLTPIM], ycsbb['dramwr'][OLTPIM], ycsbb['pimrd'][OLTPIM], ycsbb['pimwr'][OLTPIM])] +
-        [dr + dw + pr + pw for dr, dw, pr, pw in zip(ycsba['dramrd'][OLTPIM], ycsba['dramwr'][OLTPIM], ycsba['pimrd'][OLTPIM], ycsba['pimwr'][OLTPIM])] +
-        [dr + dw + pr + pw for dr, dw, pr, pw in zip(ycsbi['dramrd'][OLTPIM], ycsbi['dramwr'][OLTPIM], ycsbi['pimrd'][OLTPIM], ycsbi['pimwr'][OLTPIM])] +
-        [dr + dw + pr + pw for dr, dw, pr, pw in zip(ycsbs['dramrd'][OLTPIM], ycsbs['dramwr'][OLTPIM], ycsbs['pimrd'][OLTPIM], ycsbs['pimwr'][OLTPIM])]
+        ycsbc['totalbw'][MOSAICDB] + ycsbc['totalbw'][OLTPIM] + 
+        ycsbb['totalbw'][MOSAICDB] + ycsbb['totalbw'][OLTPIM] + 
+        ycsba['totalbw'][MOSAICDB] + ycsba['totalbw'][OLTPIM] + 
+        ycsbi['totalbw'][MOSAICDB] + ycsbi['totalbw'][OLTPIM] + 
+        ycsbs['totalbw'][MOSAICDB] + ycsbs['totalbw'][OLTPIM]
     )
     def dram_plot(axis, workload, indices, labels, top_ylim=True):
         width = 0.3
@@ -266,15 +272,17 @@ def plot_overall(args):
         if top_ylim: axis.set_ylim(bottom=0, top=dram_ylim * 1.1)
         else: axis.set_ylim(bottom=0)
     dram_plot(axes[1][0], ycsbc, x_indices, size_labels)
-    dram_plot(axes[1][1], ycsbb, x_indices, size_labels)
-    dram_plot(axes[1][2], ycsba, x_indices, size_labels)
-    dram_plot(axes[1][3], ycsbi, x_indices, ycsbi_labels)
-    dram_plot(axes[1][4], ycsbs, x_indices, ycsbs_labels)
+    dram_plot(axes[1][1], ycsbs, x_indices, ycsbs_labels)
+    dram_plot(axes[1][2], ycsbb, x_indices, size_labels)
+    dram_plot(axes[1][3], ycsba, x_indices, size_labels)
+    dram_plot(axes[1][4], ycsbi, x_indices, ycsbi_labels)
     dram_plot(axes[1][5], tpcc, x_indices, tpcc_labels, top_ylim=False)
     axes[1][0].set_ylabel('Memory Traffic\nPer Txn (KBPT)')
-    axes[1][1].set_xlabel('Table Size')
-    axes[1][3].set_xlabel('Insert Ratio')
-    axes[1][4].set_xlabel('Max Scan Length')
+    axes[1][0].set_xlabel('Table Size')
+    axes[1][1].set_xlabel('Max Scan Length')
+    axes[1][2].set_xlabel('Table Size')
+    axes[1][3].set_xlabel('Table Size')
+    axes[1][4].set_xlabel('Insert Ratio')
     axes[1][5].set_xlabel('Threads')
     axes[1][1].set_yticklabels('')
     axes[1][2].set_yticklabels('')
@@ -291,7 +299,99 @@ def plot_overall(args):
     legl2 = [
         MOSAICDB, OLTPIM, 'DRAM.Rd', 'DRAM.Wr', 'PIM.Rd', 'PIM.Wr',
     ]
-    fig.legend(legh1 + legh2, legl1 + legl2, ncol=4, loc='upper center', bbox_to_anchor=(0.5, 0))
+    fig.legend(legh1 + legh2, legl1 + legl2, ncol=4, loc='lower center', bbox_to_anchor=(0.5, 1))
+    plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')
+    plt.close(fig)
+
+def plot_gc(args):
+    EXP_NAME = 'ycsb'
+    PLOT_NAME = 'gc'
+    SIZE_TO_LABEL = {10**6: '1M', 10**7: '10M', 10**8: '100M', 10**9: '1B'}
+    ycsba = {
+        True: {
+            'size': {MOSAICDB: [], OLTPIM: []},
+            'tput': {MOSAICDB: [], OLTPIM: []},
+            'p99': {MOSAICDB: [], OLTPIM: []},
+            'dramrd': {MOSAICDB: [], OLTPIM: []},
+            'dramwr': {MOSAICDB: [], OLTPIM: []},
+            'pimrd': {MOSAICDB: [], OLTPIM: []},
+            'pimwr': {MOSAICDB: [], OLTPIM: []},
+            'totalbw': {MOSAICDB: [], OLTPIM: []},
+        },
+        False: {
+            'size': {MOSAICDB: [], OLTPIM: []},
+            'tput': {MOSAICDB: [], OLTPIM: []},
+            'p99': {MOSAICDB: [], OLTPIM: []},
+            'dramrd': {MOSAICDB: [], OLTPIM: []},
+            'dramwr': {MOSAICDB: [], OLTPIM: []},
+            'pimrd': {MOSAICDB: [], OLTPIM: []},
+            'pimwr': {MOSAICDB: [], OLTPIM: []},
+            'totalbw': {MOSAICDB: [], OLTPIM: []},
+        },
+    }
+    def append_to_stats(workload_stats, gc, system, row):
+        workload_stats[gc]['size'][system].append(int(row['workload_size']))
+        workload_stats[gc]['tput'][system].append(float(row['commits']) / float(row['time(s)']) / 1000000)
+        workload_stats[gc]['p99'][system].append(float(row['p99(ms)']))
+        per_txn_bw = lambda name: float(row[name]) / float(row['commits']) * (1024*1024*1024/1000000)
+        dramrd = per_txn_bw('dram.rd(MiB)')
+        dramwr = per_txn_bw('dram.wr(MiB)')
+        pimrd = per_txn_bw('pim.rd(MiB)')
+        pimwr = per_txn_bw('pim.wr(MiB)')
+        workload_stats[gc]['dramrd'][system].append(dramrd)
+        workload_stats[gc]['dramwr'][system].append(dramwr)
+        workload_stats[gc]['pimrd'][system].append(pimrd)
+        workload_stats[gc]['pimwr'][system].append(pimwr)
+        workload_stats[gc]['totalbw'][system].append(dramrd + dramwr + pimrd + pimwr)
+    for system in SYSTEMS:
+        with open(result_file_path(args, EXP_NAME, system), 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                system = row['system']
+                workload = row['workload']
+                gc = (row['GC'] == 'True')
+                if workload == 'YCSB-A':
+                    append_to_stats(ycsba, gc, system, row)
+
+    fig, axes = plt.subplots(1, 2, figsize=(5, 2), constrained_layout=True)
+    formatter = FuncFormatter(lambda x, _: f'{x:g}')
+    x_indices = range(len(ycsba[True]['size'][MOSAICDB]))
+    x_labels = [SIZE_TO_LABEL[ycsba[True]['size'][MOSAICDB][x]] for x in x_indices]
+
+    def gc_nogc_plot(axis, workload, xlabels, yname):
+        axis.plot(x_indices, workload[True][yname][MOSAICDB], color='black', linestyle='-', marker='o', label=MOSAICDB)
+        axis.plot(x_indices, workload[True][yname][OLTPIM], color='red', linestyle='-', marker='o', label=OLTPIM)
+        axis.plot(x_indices, workload[False][yname][MOSAICDB], color='grey', linestyle='--', marker='*', label=MOSAICDB + ' (no GC)')
+        axis.plot(x_indices, workload[False][yname][OLTPIM], color='pink', linestyle='--', marker='*', label=OLTPIM + ' (no GC)')
+        axis.set_xticks(x_indices)
+        axis.set_xticklabels(xlabels)
+        axis.set_xlabel('')
+        axis.yaxis.set_major_formatter(formatter)
+        axis.minorticks_off()
+        axis.set_xlim(-0.5, len(x_indices) - 0.5)
+        axis.set_ylim(bottom=0)
+    gc_nogc_plot(axes[0], ycsba, x_labels, 'tput')
+    axes[0].set_ylabel('Throughput (MTPS)')
+
+    slowdown_gen = lambda workload, system: \
+        [nogc / gc for gc, nogc in zip(workload[True]['tput'][system], workload[False]['tput'][system])]
+    def slowdown_plot(axis, workload, xlabels):
+        width = 0.3
+        axis.bar([x - width/2 for x in x_indices], slowdown_gen(workload, MOSAICDB), width, color='white', edgecolor='black', hatch='\\\\', label=MOSAICDB)
+        axis.bar([x + width/2 for x in x_indices], slowdown_gen(workload, OLTPIM), width, color='white', edgecolor='red', hatch='//', label=OLTPIM)
+        axis.set_xticks(x_indices)
+        axis.set_xticklabels(xlabels)
+        axis.set_xlabel('')
+        axis.yaxis.set_major_formatter(formatter)
+        axis.minorticks_off()
+        axis.set_xlim(-0.5, len(x_indices) - 0.5)
+        axis.set_ylim(bottom=0)
+    slowdown_plot(axes[1], ycsba, x_labels)
+    axes[1].set_ylabel('GC Slowdown')
+    fig.supxlabel('Table Size')
+    legh0, legl0 = axes[0].get_legend_handles_labels()
+    legh1, legl1 = axes[1].get_legend_handles_labels()
+    fig.legend(legh0 + legh1, legl0 + legl1, ncol=3, loc='lower center', bbox_to_anchor=(0.5, 1))
     plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')
     plt.close(fig)
 
@@ -336,7 +436,7 @@ def plot_batchsize(args):
                     system = OLTPIM_NOMULTIGET
                 append_to_stats(stats, system, row)
 
-    fig, axes = plt.subplots(2, 2, figsize=(5, 3.5), constrained_layout=True)
+    fig, axes = plt.subplots(2, 2, figsize=(5, 3), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
 
     def simple_plot(axis, yname, ylabel, ylog):
@@ -364,7 +464,7 @@ def plot_batchsize(args):
     axes[1][1].yaxis.set_major_formatter(LogFormatterSciNotation())
     legh, legl = axes[0][0].get_legend_handles_labels()
     fig.supxlabel('Coroutine Batchsize per Thread')
-    fig.legend(legh, legl, ncol=3, loc='upper center', bbox_to_anchor=(0.5, 0))
+    fig.legend(legh, legl, ncol=3, loc='lower center', bbox_to_anchor=(0.5, 1))
     plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')
     plt.close(fig)
 
@@ -414,7 +514,7 @@ def plot_breakdown(args):
             else:
                 append_to_stats(OLTPIM, row)
 
-    fig, axes = plt.subplots(2, 1, figsize=(6, 4), constrained_layout=True)
+    fig, axes = plt.subplots(2, 1, figsize=(5, 3), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
     x_indices = range(len(X_LABELS))
     x_labels = X_LABELS
@@ -455,5 +555,6 @@ if __name__ == "__main__":
     args = parse_args()
     plot_intro(args)
     plot_overall(args)
+    plot_gc(args)
     plot_batchsize(args)
     plot_breakdown(args)
