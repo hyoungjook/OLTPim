@@ -74,7 +74,7 @@ def plot_overall(args):
     EXP_NAME_2 = 'tpcc'
     PLOT_NAME = 'overall'
     SIZE_TO_LABEL = {10**6: '1M', 10**7: '10M', 10**8: '100M', 10**9: '1B'}
-    INS_TO_LABEL = {0.25: '25%', 0.5: '50%', 0.75: '75%', 1.0: '100%'}
+    INS_TO_LABEL = {0.1: '10%', 0.2: '20%', 0.5: '50%', 1.0: '100%'}
     ycsbc = {
         'size': {MOSAICDB: [], OLTPIM: []},
         'tput': {MOSAICDB: [], OLTPIM: []},
@@ -167,13 +167,13 @@ def plot_overall(args):
                         ycsba['size'][system].append(int(row['workload_size']))
                         append_to_stats(ycsba, system, row)
                 elif workload == 'YCSB-I1':
-                    ycsbi['ins-ratio'][system].append(0.25)
+                    ycsbi['ins-ratio'][system].append(0.1)
                     append_to_stats(ycsbi, system, row)
                 elif workload == 'YCSB-I2':
-                    ycsbi['ins-ratio'][system].append(0.5)
+                    ycsbi['ins-ratio'][system].append(0.2)
                     append_to_stats(ycsbi, system, row)
                 elif workload == 'YCSB-I3':
-                    ycsbi['ins-ratio'][system].append(0.75)
+                    ycsbi['ins-ratio'][system].append(0.5)
                     append_to_stats(ycsbi, system, row)
                 elif workload == 'YCSB-I4':
                     ycsbi['ins-ratio'][system].append(1.0)

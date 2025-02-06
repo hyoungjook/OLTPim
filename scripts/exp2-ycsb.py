@@ -15,10 +15,10 @@ WORKLOAD_SIZES = {
     'YCSB-I2': [10 ** 8],
     'YCSB-I3': [10 ** 8],
     'YCSB-I4': [10 ** 8],
-    'YCSB-S2': [10 ** 8],
-    'YCSB-S4': [10 ** 8],
-    'YCSB-S8': [10 ** 8],
-    'YCSB-S16': [10 ** 8],
+    'YCSB-S2': [10 ** 9],
+    'YCSB-S4': [10 ** 9],
+    'YCSB-S8': [10 ** 9],
+    'YCSB-S16': [10 ** 9],
 }
 GC_OPTS = {
     'YCSB-C': [True],
