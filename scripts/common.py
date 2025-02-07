@@ -58,7 +58,7 @@ def run(args, system, workload, workload_size,
         bench_seconds, bench_threads, hugetlb_size_gb,
         coro_batch_size=None, no_logging=False,
         no_numa_local_workload=False, no_pim_multiget=False,
-        no_gc=False, no_interleave=False,
+        no_gc=False, no_interleave=False, ycsb_zipfian=False,
         executable_suffix=None):
     if not args.systems[system]:
         return
@@ -91,6 +91,8 @@ def run(args, system, workload, workload_size,
         cmd += ['--no-gc']
     if no_interleave:
         cmd += ['--no-interleave']
+    if ycsb_zipfian:
+        cmd += ['--ycsb-zipfian']
     if executable_suffix:
         cmd += ['--executable-suffix', executable_suffix]
     ret = subprocess.run(cmd)
