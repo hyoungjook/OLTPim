@@ -37,7 +37,7 @@ def plot_intro(args):
                 system = row['system']
                 workload = row['workload']
                 if int(row['workload_size']) == 10**9 and row['GC'] == 'True' \
-                        and row['YCSBzipfian'] == 'False':
+                        and float(row['YCSBzipfian']) == 0:
                     if workload in ['YCSB-C', 'YCSB-B', 'YCSB-A']:
                         append_to_stats(system, row)
     assert len(stats_1B['workload'][MOSAICDB]) == len(LABELS) and \
@@ -160,7 +160,7 @@ def plot_overall(args):
                     ycsbc['size'][system].append(int(row['workload_size']))
                     append_to_stats(ycsbc, system, row)
                 elif workload == 'YCSB-B':
-                    if row['YCSBzipfian'] == 'False':
+                    if float(row['YCSBzipfian']) == 0:
                         ycsbb['size'][system].append(int(row['workload_size']))
                         append_to_stats(ycsbb, system, row)
                 elif workload == 'YCSB-A':
@@ -573,75 +573,54 @@ def plot_logging(args):
 def plot_skew(args):
     EXP_NAME='ycsb'
     PLOT_NAME='skew'
-    SIZE_TO_LABEL = {10**6: '1M', 10**7: '10M', 10**8: '100M', 10**9: '1B'}
     ycsbb = {
-        True: {
-            'size': {MOSAICDB: [], OLTPIM: []},
-            'tput': {MOSAICDB: [], OLTPIM: []},
-            'p99': {MOSAICDB: [], OLTPIM: []},
-            'dramrd': {MOSAICDB: [], OLTPIM: []},
-            'dramwr': {MOSAICDB: [], OLTPIM: []},
-            'pimrd': {MOSAICDB: [], OLTPIM: []},
-            'pimwr': {MOSAICDB: [], OLTPIM: []},
-            'totalbw': {MOSAICDB: [], OLTPIM: []},
-        },
-        False: {
-            'size': {MOSAICDB: [], OLTPIM: []},
-            'tput': {MOSAICDB: [], OLTPIM: []},
-            'p99': {MOSAICDB: [], OLTPIM: []},
-            'dramrd': {MOSAICDB: [], OLTPIM: []},
-            'dramwr': {MOSAICDB: [], OLTPIM: []},
-            'pimrd': {MOSAICDB: [], OLTPIM: []},
-            'pimwr': {MOSAICDB: [], OLTPIM: []},
-            'totalbw': {MOSAICDB: [], OLTPIM: []},
-        },
+        'theta': {MOSAICDB: [], OLTPIM: []},
+        'tput': {MOSAICDB: [], OLTPIM: []},
+        'p99': {MOSAICDB: [], OLTPIM: []},
+        'dramrd': {MOSAICDB: [], OLTPIM: []},
+        'dramwr': {MOSAICDB: [], OLTPIM: []},
+        'pimrd': {MOSAICDB: [], OLTPIM: []},
+        'pimwr': {MOSAICDB: [], OLTPIM: []},
+        'totalbw': {MOSAICDB: [], OLTPIM: []},
     }
-    def append_to_stats(workload_stats, zipfian, system, row):
-        workload_stats[zipfian]['size'][system].append(int(row['workload_size']))
-        workload_stats[zipfian]['tput'][system].append(float(row['commits']) / float(row['time(s)']) / 1000000)
-        workload_stats[zipfian]['p99'][system].append(float(row['p99(ms)']))
+    def append_to_stats(workload_stats, system, row):
+        workload_stats['theta'][system].append(float(row['YCSBzipfian']))
+        workload_stats['tput'][system].append(float(row['commits']) / float(row['time(s)']) / 1000000)
+        workload_stats['p99'][system].append(float(row['p99(ms)']))
         per_txn_bw = lambda name: float(row[name]) / float(row['commits']) * (1024*1024*1024/1000000)
         dramrd = per_txn_bw('dram.rd(MiB)')
         dramwr = per_txn_bw('dram.wr(MiB)')
         pimrd = per_txn_bw('pim.rd(MiB)')
         pimwr = per_txn_bw('pim.wr(MiB)')
-        workload_stats[zipfian]['dramrd'][system].append(dramrd)
-        workload_stats[zipfian]['dramwr'][system].append(dramwr)
-        workload_stats[zipfian]['pimrd'][system].append(pimrd)
-        workload_stats[zipfian]['pimwr'][system].append(pimwr)
-        workload_stats[zipfian]['totalbw'][system].append(dramrd + dramwr + pimrd + pimwr)
+        workload_stats['dramrd'][system].append(dramrd)
+        workload_stats['dramwr'][system].append(dramwr)
+        workload_stats['pimrd'][system].append(pimrd)
+        workload_stats['pimwr'][system].append(pimwr)
+        workload_stats['totalbw'][system].append(dramrd + dramwr + pimrd + pimwr)
     for system in SYSTEMS:
         with open(result_file_path(args, EXP_NAME, system), 'r') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 system = row['system']
-                workload = row['workload']
-                zipfian = (row['YCSBzipfian'] == 'True')
-                if workload == 'YCSB-B':
-                    append_to_stats(ycsbb, zipfian, system, row)
+                if row['workload'] == 'YCSB-B' and int(row['workload_size']) == 10**8:
+                    append_to_stats(ycsbb, system, row)
 
     fig, axes = plt.subplots(1, 2, figsize=(5, 2), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
-    x_indices = range(len(ycsbb[True]['size'][MOSAICDB]))
-    x_labels = [SIZE_TO_LABEL[ycsbb[True]['size'][MOSAICDB][x]] for x in x_indices]
 
-    def simple_plot(axis, workload, xlabels, yname):
-        axis.plot(x_indices, workload[False][yname][MOSAICDB], color='black', linestyle='-', marker='o', label=MOSAICDB)
-        axis.plot(x_indices, workload[False][yname][OLTPIM], color='red', linestyle='-', marker='o', label=OLTPIM)
-        axis.plot(x_indices, workload[True][yname][MOSAICDB], color='grey', linestyle='--', marker='*', label=MOSAICDB + ' (zipfian)')
-        axis.plot(x_indices, workload[True][yname][OLTPIM], color='pink', linestyle='--', marker='*', label=OLTPIM + ' (zipfian)')
-        axis.set_xticks(x_indices)
-        axis.set_xticklabels(xlabels)
+    def simple_plot(axis, workload, yname):
+        axis.plot(workload['theta'][MOSAICDB], workload[yname][MOSAICDB], color='black', linestyle='-', marker='o', label=MOSAICDB)
+        axis.plot(workload['theta'][OLTPIM], workload[yname][OLTPIM], color='red', linestyle='-', marker='o', label=OLTPIM)
         axis.set_xlabel('')
+        axis.xaxis.set_major_formatter(formatter)
         axis.yaxis.set_major_formatter(formatter)
         axis.minorticks_off()
-        axis.set_xlim(-0.5, len(x_indices) - 0.5)
         axis.set_ylim(bottom=0)
-    simple_plot(axes[0], ycsbb, x_labels, 'tput')
+    simple_plot(axes[0], ycsbb, 'tput')
     axes[0].set_ylabel('Throughput (MTPS)')
-    simple_plot(axes[1], ycsbb, x_labels, 'totalbw')
+    simple_plot(axes[1], ycsbb, 'totalbw')
     axes[1].set_ylabel('Memory Traffic\nPer Txn (KBPT)')
-    fig.supxlabel('Table Size')
+    fig.supxlabel('Zipfian Theta')
     legh, legl = axes[0].get_legend_handles_labels()
     fig.legend(legh, legl, ncol=2, loc='lower center', bbox_to_anchor=(0.5, 1))
     plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')

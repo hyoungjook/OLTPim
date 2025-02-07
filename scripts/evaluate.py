@@ -49,8 +49,8 @@ def parse_args():
         help='Disable garbage collection.')
     parser.add_argument('--no-interleave', action='store_false', dest='interleave',
         help='Disable PIM-CPU interleaving.')
-    parser.add_argument('--ycsb-zipfian', action='store_true',
-        help='Enable zipfian distribution on YCSB.')
+    parser.add_argument('--ycsb-zipfian-theta', type=float, default=0,
+        help='Enable zipfian distribution on YCSB with theta value.')
     parser.add_argument('--executable-suffix', type=str, default=None,
         help='Suffix to executable.')
     parser.add_argument('--num-upmem-ranks', type=int, default=None,
@@ -69,9 +69,9 @@ def parse_args():
     if args.system == 'OLTPim':
         if not args.num_upmem_ranks:
             parser.error('--system=OLTPim requires --num-upmem-ranks flag.')
-    if args.ycsb_zipfian:
+    if args.ycsb_zipfian_theta != 0:
         if 'YCSB' not in args.workload:
-            parser.error('--ycsb-zipfian provided but workload is not YCSB.')
+            parser.error('--ycsb-zipfian-theta provided but workload is not YCSB.')
 
     return args
 
@@ -180,8 +180,11 @@ def ycsb_options(args):
         f'-ycsb_hot_table_size={table_size}',
         f'-ycsb_workload={ycsb_type}'
     ]
-    if args.ycsb_zipfian:
-        opts += ['-ycsb_hot_table_rng=zipfian']
+    if args.ycsb_zipfian_theta > 0:
+        opts += [
+            '-ycsb_hot_table_rng=zipfian',
+            f'-ycsb_zipfian_theta={args.ycsb_zipfian_theta}'
+        ]
     if ycsb_type == 'S':
         opts += [f'-ycsb_max_scan_size={ycsb_scan_length}']
     if args.system == 'OLTPim' and args.pim_multiget:
@@ -311,7 +314,7 @@ def print_result(args, values):
     csv = f"{args.system},{args.executable_suffix},{args.workload},{args.workload_size}," + \
         f"{args.threads},{args.coro_batch_size}," + \
         f"{args.logging},{args.numa_local_workload}," + \
-        f"{args.gc},{args.interleave},{args.pim_multiget},{args.ycsb_zipfian}," + \
+        f"{args.gc},{args.interleave},{args.pim_multiget},{args.ycsb_zipfian_theta}," + \
         f"{values['time(s)']},{values['commits']},{values['aborts']},{values['p99(ms)']}," + \
         f"{values['Epkg(J)']},{values['Eram(J)']}," + \
         f"{values['dram.rd(MiB)']},{values['dram.wr(MiB)']}," + \
