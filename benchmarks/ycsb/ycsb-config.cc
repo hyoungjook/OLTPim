@@ -54,9 +54,13 @@ YcsbWorkload YcsbWorkloadF('F', 0, 0, 0, 0, 100U);  // Workload F - 100% RMW
 // Extra workloads (not in spec)
 YcsbWorkload YcsbWorkloadG('G', 0, 0, 5U, 100U, 0);  // Workload G - 5% update, 95% scan
 YcsbWorkload YcsbWorkloadI1('i', 10U, 100U, 0, 0, 0);  // Workload I1 - 10% insert, 90% read
-YcsbWorkload YcsbWorkloadI2('j', 20U, 100U, 0, 0, 0);  // Workload I2 - 20% insert, 75% read
+YcsbWorkload YcsbWorkloadI2('j', 20U, 100U, 0, 0, 0);  // Workload I2 - 20% insert, 80% read
 YcsbWorkload YcsbWorkloadI3('k', 50U, 100U, 0, 0, 0);  // Workload I3 - 50% insert, 50% read
 YcsbWorkload YcsbWorkloadI4('I', 100U, 0, 0, 0, 0);  // Workload I4 - 100% insert
+YcsbWorkload YcsbWorkloadU1('u', 0, 90U, 100U, 0, 0);  // Workload U1 - 10% update, 90% read
+YcsbWorkload YcsbWorkloadU2('v', 0, 80U, 100U, 0, 0);  // Workload U2 - 20% update, 80% read
+YcsbWorkload YcsbWorkloadU3('w', 0, 50U, 100U, 0, 0);  // Workload U3 - 50% update, 50% read
+YcsbWorkload YcsbWorkloadU4('U', 0, 0, 100U, 0, 0);  // Workload U4 - 100% update
 YcsbWorkload YcsbWorkloadS('S', 0, 0, 0, 100U, 0);  // Workload S - 100% scan
 
 YcsbWorkload ycsb_workload = YcsbWorkloadC;
@@ -307,6 +311,14 @@ void ycsb_parse_options() {
     ycsb_workload = YcsbWorkloadI3;
   } else if (FLAGS_ycsb_workload == "I4") {
     ycsb_workload = YcsbWorkloadI4;
+  } else if (FLAGS_ycsb_workload == "U1") {
+    ycsb_workload = YcsbWorkloadU1;
+  } else if (FLAGS_ycsb_workload == "U2") {
+    ycsb_workload = YcsbWorkloadU2;
+  } else if (FLAGS_ycsb_workload == "U3") {
+    ycsb_workload = YcsbWorkloadU3;
+  } else if (FLAGS_ycsb_workload == "U4") {
+    ycsb_workload = YcsbWorkloadU4;
   } else if (FLAGS_ycsb_workload == "S") {
     ycsb_workload = YcsbWorkloadS;
   } else {

@@ -27,6 +27,7 @@ def parse_args():
     parser.add_argument('--workload', default=None, choices=[
         'YCSB-A', 'YCSB-B', 'YCSB-C',
         'YCSB-I1', 'YCSB-I2', 'YCSB-I3', 'YCSB-I4',
+        'YCSB-U1', 'YCSB-U2', 'YCSB-U3', 'YCSB-U4',
         'YCSB-S2', 'YCSB-S4', 'YCSB-S8', 'YCSB-S16',
         'TPC-C', 'TPC-CA', 'TPC-CR'
     ], help='Workload to evaluate.')
@@ -154,6 +155,10 @@ def ycsb_options(args):
         case 'YCSB-I2': ycsb_type = 'I2'
         case 'YCSB-I3': ycsb_type = 'I3'
         case 'YCSB-I4': ycsb_type = 'I4'
+        case 'YCSB-U1': ycsb_type = 'U1'
+        case 'YCSB-U2': ycsb_type = 'U2'
+        case 'YCSB-U3': ycsb_type = 'U3'
+        case 'YCSB-U4': ycsb_type = 'U4'
         case 'YCSB-S2': ycsb_type = 'S'; ycsb_scan_length = 2
         case 'YCSB-S4': ycsb_type = 'S'; ycsb_scan_length = 4
         case 'YCSB-S8': ycsb_type = 'S'; ycsb_scan_length = 8

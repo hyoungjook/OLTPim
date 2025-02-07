@@ -155,6 +155,7 @@ def plot_overall(args):
                 system = row['system']
                 workload = row['workload']
                 gc = (row['GC'] == 'True')
+                logging = (row['log'] == 'True')
                 if workload == 'YCSB-C':
                     ycsbc['size'][system].append(int(row['workload_size']))
                     append_to_stats(ycsbc, system, row)
@@ -167,17 +168,21 @@ def plot_overall(args):
                         ycsba['size'][system].append(int(row['workload_size']))
                         append_to_stats(ycsba, system, row)
                 elif workload == 'YCSB-I1':
-                    ycsbi['ins-ratio'][system].append(0.1)
-                    append_to_stats(ycsbi, system, row)
+                    if logging:
+                        ycsbi['ins-ratio'][system].append(0.1)
+                        append_to_stats(ycsbi, system, row)
                 elif workload == 'YCSB-I2':
-                    ycsbi['ins-ratio'][system].append(0.2)
-                    append_to_stats(ycsbi, system, row)
+                    if logging:
+                        ycsbi['ins-ratio'][system].append(0.2)
+                        append_to_stats(ycsbi, system, row)
                 elif workload == 'YCSB-I3':
-                    ycsbi['ins-ratio'][system].append(0.5)
-                    append_to_stats(ycsbi, system, row)
+                    if logging:
+                        ycsbi['ins-ratio'][system].append(0.5)
+                        append_to_stats(ycsbi, system, row)
                 elif workload == 'YCSB-I4':
-                    ycsbi['ins-ratio'][system].append(1.0)
-                    append_to_stats(ycsbi, system, row)
+                    if logging:
+                        ycsbi['ins-ratio'][system].append(1.0)
+                        append_to_stats(ycsbi, system, row)
                 elif workload == 'YCSB-S2':
                     ycsbs['scan-len'][system].append(2)
                     append_to_stats(ycsbs, system, row)
@@ -395,6 +400,176 @@ def plot_gc(args):
     plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')
     plt.close(fig)
 
+def plot_logging(args):
+    EXP_NAME = 'ycsb'
+    PLOT_NAME = 'logging'
+    RATIO_TO_LABEL = {0.1: '10%', 0.2: '20%', 0.5: '50%', 1.0: '100%'}
+    ycsbi = {
+        True: {
+            'ratio': [],
+            'tput': [],
+            'p99': [],
+            'dramrd': [],
+            'dramwr': [],
+            'pimrd': [],
+            'pimwr': [],
+            'totalbw': [],
+        },
+        False: {
+            'ratio': [],
+            'tput': [],
+            'p99': [],
+            'dramrd': [],
+            'dramwr': [],
+            'pimrd': [],
+            'pimwr': [],
+            'totalbw': [],
+        },
+    }
+    ycsbu = {
+        True: {
+            'ratio': [],
+            'tput': [],
+            'p99': [],
+            'dramrd': [],
+            'dramwr': [],
+            'pimrd': [],
+            'pimwr': [],
+            'totalbw': [],
+        },
+        False: {
+            'ratio': [],
+            'tput': [],
+            'p99': [],
+            'dramrd': [],
+            'dramwr': [],
+            'pimrd': [],
+            'pimwr': [],
+            'totalbw': [],
+        },
+    }
+    def append_to_stats(workload_stats, row):
+        workload_stats['tput'].append(float(row['commits']) / float(row['time(s)']) / 1000000)
+        workload_stats['p99'].append(float(row['p99(ms)']))
+        per_txn_bw = lambda name: float(row[name]) / float(row['commits']) * (1024*1024*1024/1000000)
+        dramrd = per_txn_bw('dram.rd(MiB)')
+        dramwr = per_txn_bw('dram.wr(MiB)')
+        pimrd = per_txn_bw('pim.rd(MiB)')
+        pimwr = per_txn_bw('pim.wr(MiB)')
+        workload_stats['dramrd'].append(dramrd)
+        workload_stats['dramwr'].append(dramwr)
+        workload_stats['pimrd'].append(pimrd)
+        workload_stats['pimwr'].append(pimwr)
+        workload_stats['totalbw'].append(dramrd + dramwr + pimrd + pimwr)
+    with open(result_file_path(args, EXP_NAME, OLTPIM), 'r') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            workload = row['workload']
+            logging = (row['log'] == 'True')
+            if workload == 'YCSB-I1':
+                ycsbi[logging]['ratio'].append(0.1)
+                append_to_stats(ycsbi[logging], row)
+            elif workload == 'YCSB-I2':
+                ycsbi[logging]['ratio'].append(0.2)
+                append_to_stats(ycsbi[logging], row)
+            elif workload == 'YCSB-I3':
+                ycsbi[logging]['ratio'].append(0.5)
+                append_to_stats(ycsbi[logging], row)
+            elif workload == 'YCSB-I4':
+                ycsbi[logging]['ratio'].append(1.0)
+                append_to_stats(ycsbi[logging], row)
+            elif workload == 'YCSB-U1':
+                ycsbu[logging]['ratio'].append(0.1)
+                append_to_stats(ycsbu[logging], row)
+            elif workload == 'YCSB-U2':
+                ycsbu[logging]['ratio'].append(0.2)
+                append_to_stats(ycsbu[logging], row)
+            elif workload == 'YCSB-U3':
+                ycsbu[logging]['ratio'].append(0.5)
+                append_to_stats(ycsbu[logging], row)
+            elif workload == 'YCSB-U4':
+                ycsbu[logging]['ratio'].append(1.0)
+                append_to_stats(ycsbu[logging], row)
+
+    fig, axes = plt.subplots(2, 2, figsize=(5, 3), constrained_layout=True)
+    formatter = FuncFormatter(lambda x, _: f'{x:g}')
+    x_indices = range(len(ycsbi[True]['ratio']))
+    labels = [RATIO_TO_LABEL[ycsbi[True]['ratio'][x]] for x in x_indices]
+
+    p99_ylim = max(
+        ycsbi[True]['p99'] + ycsbi[False]['p99'] +
+        ycsbu[True]['p99'] + ycsbu[False]['p99']
+    )
+    def p99_plot(axis, workload, indices, title):
+        width = 0.3
+        indices1 = [x - width/2 for x in indices]
+        indices2 = [x + width/2 for x in indices]
+        axis.bar(indices1, workload[True]['p99'], width, color='white', edgecolor='red', hatch='//')
+        axis.bar(indices2, workload[False]['p99'], width, color='white', edgecolor='pink', hatch='xx')
+        axis.set_xticks(indices)
+        axis.set_xticklabels('')
+        axis.set_xlabel('')
+        axis.yaxis.set_major_formatter(formatter)
+        axis.minorticks_off()
+        axis.set_xlim(-0.5, len(indices) - 0.5)
+        axis.set_ylim(bottom=0, top=p99_ylim * 1.1)
+        axis.title.set_text(title)
+    p99_plot(axes[0][0], ycsbi, x_indices, 'YCSB-I')
+    p99_plot(axes[0][1], ycsbu, x_indices, 'YCSB-U')
+    axes[0][0].set_ylabel('P99 Latency (ms)')
+    axes[0][1].set_yticklabels('')
+
+    dram_ylim = max(
+        ycsbi[True]['totalbw'] + ycsbi[False]['totalbw'] +
+        ycsbu[True]['totalbw'] + ycsbu[False]['totalbw']
+    )
+    def dram_plot(axis, workload, indices, labels):
+        width = 0.3
+        indices1 = [x - width/2 for x in indices]
+        indices2 = [x + width/2 for x in indices]
+        bottom = [0 for _ in indices]
+        axis.bar(indices1, workload[True]['dramrd'], width, bottom=bottom, color='lightgreen', edgecolor='red', hatch='//')
+        bottom = [b + n for b, n in zip(bottom, workload[True]['dramrd'])]
+        axis.bar(indices1, workload[True]['dramwr'], width, bottom=bottom, color='green', edgecolor='red', hatch='//')
+        bottom = [b + n for b, n in zip(bottom, workload[True]['dramwr'])]
+        axis.bar(indices1, workload[True]['pimrd'], width, bottom=bottom, color='lightgrey', edgecolor='red', hatch='//')
+        bottom = [b + n for b, n in zip(bottom, workload[True]['pimrd'])]
+        axis.bar(indices1, workload[True]['pimwr'], width, bottom=bottom, color='grey', edgecolor='red', hatch='//')
+        bottom = [0 for _ in indices]
+        axis.bar(indices2, workload[False]['dramrd'], width, bottom=bottom, color='lightgreen', edgecolor='pink', hatch='xx')
+        bottom = [b + n for b, n in zip(bottom, workload[False]['dramrd'])]
+        axis.bar(indices2, workload[False]['dramwr'], width, bottom=bottom, color='green', edgecolor='pink', hatch='xx')
+        bottom = [b + n for b, n in zip(bottom, workload[False]['dramwr'])]
+        axis.bar(indices2, workload[False]['pimrd'], width, bottom=bottom, color='lightgrey', edgecolor='pink', hatch='xx')
+        bottom = [b + n for b, n in zip(bottom, workload[False]['pimrd'])]
+        axis.bar(indices2, workload[False]['pimwr'], width, bottom=bottom, color='grey', edgecolor='pink', hatch='xx')
+        axis.set_xticks(indices)
+        axis.set_xticklabels(labels)
+        axis.set_xlabel('')
+        axis.yaxis.set_major_formatter(formatter)
+        axis.minorticks_off()
+        axis.set_xlim(-0.5, len(indices) - 0.5)
+        axis.set_ylim(bottom=0, top=dram_ylim * 1.1)
+    dram_plot(axes[1][0], ycsbi, x_indices, labels)
+    dram_plot(axes[1][1], ycsbu, x_indices, labels)
+    axes[1][0].set_ylabel('Memory Traffic\nPer Txn (KBPT)')
+    axes[1][0].set_xlabel('Insert Ratio')
+    axes[1][1].set_xlabel('Update Ratio')
+    axes[1][1].set_yticklabels('')
+
+    legh = [
+        mpatch.Patch(facecolor='white', edgecolor='red', hatch='//'),
+        mpatch.Patch(facecolor='white', edgecolor='pink', hatch='xx'),
+        mpatch.Patch(color='lightgreen'), mpatch.Patch(color='green'),
+        mpatch.Patch(color='lightgrey'), mpatch.Patch(color='grey'),
+    ]
+    legl = [
+        OLTPIM, OLTPIM + ' (no log)', 'DRAM.Rd', 'DRAM.Wr', 'PIM.Rd', 'PIM.Wr',
+    ]
+    fig.legend(legh, legl, ncol=3, loc='lower center', bbox_to_anchor=(0.5, 1))
+    plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')
+    plt.close(fig)
+
 def plot_batchsize(args):
     EXP_NAME = 'batchsize'
     PLOT_NAME = 'batchsize'
@@ -556,5 +731,6 @@ if __name__ == "__main__":
     plot_intro(args)
     plot_overall(args)
     plot_gc(args)
+    plot_logging(args)
     plot_batchsize(args)
     plot_breakdown(args)
