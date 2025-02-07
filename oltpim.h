@@ -53,6 +53,19 @@ struct write_set_t {
   inline uint32_t size() {return num_entries;}
   inline void clear() {num_entries = 0;}
   inline log_record_t &operator[](uint32_t idx) {return entries[idx];}
+  // destroys entries[] and num_entries, so should be clear()ed after calling.
+  // extract unique pim_ids in entries[] and store it adjacently in the same place.
+  inline uint16_t *pim_id_sort() {
+    uint16_t i, j;
+    uint16_t *pim_ids = (uint16_t*)entries;
+    // compress, loop from begin to end
+    for (i = 0; i < num_entries; ++i) {
+      pim_ids[i] = entries[i].pim_id;
+    }
+    // in-place sort
+    std::sort(pim_ids, pim_ids + num_entries);
+    return pim_ids;
+  }
 };
 static_assert(sizeof(oltpim::request_commit) >= sizeof(oltpim::request_abort), "");
 

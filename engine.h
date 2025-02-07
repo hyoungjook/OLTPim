@@ -292,17 +292,18 @@ private:
     struct {uint32_t num_pims;} numa_global;
     struct {uint32_t num_pims_per_numa, numa_id;} numa_local;
   } pim_index_key_info;
+  static constexpr uint64_t KNUTH_MULTIPLIER = 11400714819323198485ULL;
   void assign_index_id();
   inline int pim_id_of(const uint64_t &key) {
     if (!is_pim_index_numa_local) {
       // Spread globally
-      return (int)((key_interval_offset + (key >> key_interval_bits)) %
+      return (int)((key_interval_offset + KNUTH_MULTIPLIER * (key >> key_interval_bits)) %
         pim_index_key_info.numa_global.num_pims);
     }
     else {
       // Only to numa_id
       const uint32_t local_pim_id =
-        (key_interval_offset + (key >> key_interval_bits)) %
+        (key_interval_offset + KNUTH_MULTIPLIER * (key >> key_interval_bits)) %
         pim_index_key_info.numa_local.num_pims_per_numa;
       return (int)(pim_index_key_info.numa_local.numa_id *
         pim_index_key_info.numa_local.num_pims_per_numa + local_pim_id);

@@ -203,18 +203,10 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
   // Mark the dirty tuple as invalid, for oid_get_version to
   // move on more quickly.
   volatile_write(xc->state, TXN::TXN_ABRTD);
-#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
-  auto *reqs = (oltpim::request_abort*)pim_request_buffer;
-#endif
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     auto &w = pim_write_set[i];
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
     if (w.entry._ptr != 0) MM::deallocate(w.entry);
-    // abort to pim
-    new (&reqs[i]) oltpim::request_abort;
-    auto &args = reqs[i].args;
-    args.xid = (xid._val) >> 16;
-    oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
 #else
     if (!w.is_secondary_index_record()) {
       Object *obj = w.get_object();
@@ -225,14 +217,28 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
     }
 #endif
   }
+
+  // abort to pim
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
-  // TODO remove waiting
+  auto *reqs = (oltpim::request_abort*)pim_request_buffer;
+  auto pim_ids = pim_write_set.pim_id_sort();
+  uint32_t num_uniq_pim_ids = 0;
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+    if (i == 0 || pim_ids[i-1] != pim_ids[i]) {
+      new (&reqs[num_uniq_pim_ids]) oltpim::request_abort;
+      auto &args = reqs[num_uniq_pim_ids].args;
+      args.xid = (xid._val) >> 16;
+      oltpim::engine::g_engine.push(pim_ids[i], &reqs[num_uniq_pim_ids]);
+      ++num_uniq_pim_ids;
+    }
+  }
+  for (uint32_t i = 0; i < num_uniq_pim_ids; ++i) {
     while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
       co_await std::suspend_always{};
     }
   }
 #endif
+
   uninitialize();
   co_return {RC_TRUE};
 }
@@ -258,9 +264,6 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
     }
 
     // Post-commit
-#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
-    auto *reqs = (oltpim::request_commit*)pim_request_buffer;
-#endif
     for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
       auto &w = pim_write_set[i];
       dbtuple fake_tuple(0);
@@ -268,25 +271,15 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
       dbtuple *tuple = (w.entry._ptr != 0) ? (dbtuple*)(object->GetPayload()) : &fake_tuple;
       uint32_t off = lb->payload_size;
 
-      // commit to pim
-#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
-      new (&reqs[i]) oltpim::request_commit;
-      auto &args = reqs[i].args;
-      args.xid = (xid._val) >> 16;
-      args.csn = xc->end;
-      oltpim::engine::g_engine.push(w.pim_id, &reqs[i]);
-#else
       if (!w.is_secondary_index_record()) {
+#if defined(OLTPIM_OFFLOAD_INDEX_ONLY)
         auto aligned_size = align_up(w.size + sizeof(dlog::log_record));
         auto size_code = encode_size_aligned(aligned_size);
         fat_ptr pdest = LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + off, segnum, size_code).to_ptr();
         object->SetPersistentAddress(pdest);
         fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
         object->SetCSN(csn_ptr);
-      }
 #endif
-
-      if (!w.is_secondary_index_record()) {
         // hack: pack index_id and pim_id to fid
         const uint32_t fid = (w.index_id << 16) | (w.pim_id);
         if (w.is_insert) {
@@ -301,9 +294,23 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
       }
     }
     ALWAYS_ASSERT(!lb || lb->payload_size == lb->capacity);
+
+    // commit to pim
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
-    // TODO remove waiting
+    auto *reqs = (oltpim::request_commit*)pim_request_buffer;
+    auto pim_ids = pim_write_set.pim_id_sort();
+    uint32_t num_uniq_pim_ids = 0;
     for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+      if (i == 0 || pim_ids[i-1] != pim_ids[i]) {
+        new (&reqs[num_uniq_pim_ids]) oltpim::request_commit;
+        auto &args = reqs[num_uniq_pim_ids].args;
+        args.xid = (xid._val) >> 16;
+        args.csn = xc->end;
+        oltpim::engine::g_engine.push(pim_ids[i], &reqs[num_uniq_pim_ids]);
+        ++num_uniq_pim_ids;
+      }
+    }
+    for (uint32_t i = 0; i < num_uniq_pim_ids; ++i) {
       while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
         co_await std::suspend_always{};
       }
