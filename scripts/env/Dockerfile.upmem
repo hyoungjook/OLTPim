@@ -35,7 +35,7 @@ RUN pip3 install pyyaml 'pyelftools>=0.26'
 # The UPMEM SDK download below goes into cache, and won't be done again
 # on subsequent builds
 
-RUN curl http://sdk-releases.upmem.com/2024.2.0/ubuntu_22.04/upmem_2024.2.0_amd64.deb \
+RUN curl http://sdk-releases.upmem.com/2025.1.0/ubuntu_22.04/upmem_2025.1.0_amd64.deb \
          -o upmem_sdk_amd64.deb \
     && apt-get update \
     && apt-get install -y /upmem_sdk_amd64.deb \
