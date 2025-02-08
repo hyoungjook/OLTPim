@@ -4,9 +4,10 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 
-def parse_args():
+def parse_args(argv = sys.argv[1:]):
     parser = argparse.ArgumentParser()
     parser.add_argument('--build-dir', type=str,
         default=str(Path(__file__).parent.parent / 'build'),
@@ -17,21 +18,19 @@ def parse_args():
         help='Size (GiB) of hugeTLB page to pre-allocate.')
     parser.add_argument('--log-limit-size-gb', type=int, default=8,
         help='Size (GiB) of log storage. Use 0 to disable log limiting.')
-    parser.add_argument('--result-file', type=str, required=True,
-        help='CSV result file to append the result.')
-    parser.add_argument('--print-header', action='store_true',
-        help='Ignore all below, just print the csv header to result file and exit.')
+    parser.add_argument('--result-file', type=str, default=None,
+        help='CSV result file to append the result. (default: stdout)')
 
-    parser.add_argument('--system', default=None, choices=['MosaicDB', 'OLTPim'],
+    parser.add_argument('--system', required=True, choices=['MosaicDB', 'OLTPim'],
         help='System to evaluate.')
-    parser.add_argument('--workload', default=None, choices=[
+    parser.add_argument('--workload', required=True, choices=[
         'YCSB-A', 'YCSB-B', 'YCSB-C',
         'YCSB-I1', 'YCSB-I2', 'YCSB-I3', 'YCSB-I4',
         'YCSB-U1', 'YCSB-U2', 'YCSB-U3', 'YCSB-U4',
         'YCSB-S2', 'YCSB-S4', 'YCSB-S8', 'YCSB-S16',
-        'TPC-C', 'TPC-CA', 'TPC-CR'
+        'TPC-C', 'TPC-C1', 'TPC-C2', 'TPC-C3'
     ], help='Workload to evaluate.')
-    parser.add_argument('--workload-size', default=None, type=int,
+    parser.add_argument('--workload-size', required=True, type=int,
         help='Table size if YCSB. Scale factor if TPC-C.')
     parser.add_argument('--seconds', type=int, default=60,
         help='Seconds to run the benchmark.')
@@ -51,27 +50,25 @@ def parse_args():
         help='Disable PIM-CPU interleaving.')
     parser.add_argument('--ycsb-zipfian-theta', type=float, default=0,
         help='Enable zipfian distribution on YCSB with theta value.')
+    parser.add_argument('--tpcc-atomic-ytd', action='store_true',
+        help='Enable atomic ytd on TPC-C.')
     parser.add_argument('--executable-suffix', type=str, default=None,
         help='Suffix to executable.')
     parser.add_argument('--num-upmem-ranks', type=int, default=None,
         help='Total number of UPMEM ranks. Used if system="OLTPim".')
     parser.add_argument('--measure-on-upmem-server', action='store_true',
         help='Provide if measuring on UPMEM server.')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    if not args.print_header:
-        if not args.system:
-            parser.error('--system is a required flag.')
-        if not args.workload:
-            parser.error('--workload is a required flag.')
-        if not args.workload_size:
-            parser.error('--workload-size is a required flag.')
     if args.system == 'OLTPim':
         if not args.num_upmem_ranks:
             parser.error('--system=OLTPim requires --num-upmem-ranks flag.')
     if args.ycsb_zipfian_theta != 0:
         if 'YCSB' not in args.workload:
             parser.error('--ycsb-zipfian-theta provided but workload is not YCSB.')
+    if args.tpcc_atomic_ytd:
+        if 'TPC-C' not in args.workload:
+            parser.error('--tpcc-atomic-ytd provided but workload is not TPC-C.')
 
     return args
 
@@ -199,14 +196,16 @@ def tpcc_options(args):
         f'-numa_spread={numa_local}',
         f'-tpcc_scale_factor={scale_factor}'
     ]
-    if args.workload == 'TPC-CA':
-        opts += [
-            '-tpcc_atomic_ytd=1'
-        ]
-    elif args.workload == 'TPC-CR':
-        opts += [
-            '-tpcc_txn_workload_mix="0,0,0,0,50,50,0,0"'
-        ]
+    if args.workload == 'TPC-C':
+        opts += ['-tpcc_txn_workload_mix=43,43,0,4,5,5,0,0']
+    elif args.workload == 'TPC-C1':
+        opts += ['-tpcc_txn_workload_mix=29,29,0,2,20,20,0,0']
+    elif args.workload == 'TPC-C2':
+        opts += ['-tpcc_txn_workload_mix=14,15,0,1,35,35,0,0']
+    elif args.workload == 'TPC-C3':
+        opts += ['-tpcc_txn_workload_mix=0,0,0,0,50,50,0,0']
+    if args.tpcc_atomic_ytd:
+        opts += ['-tpcc_atomic_ytd=1']
     if args.system == 'OLTPim' and args.pim_multiget:
         opts += ['-tpcc_oltpim_multiget=1']
     return opts
@@ -233,7 +232,7 @@ def oltpim_options(args):
     ]
     return opts
 
-def evaluate(args):
+def measure(args):
     executable = Path(args.build_dir) / 'benchmarks'
     match args.system:
         case 'MosaicDB':
@@ -267,15 +266,22 @@ def evaluate(args):
     else:
         raise ValueError(f'Invalid system={args.system}')
 
-    with tempfile.NamedTemporaryFile(mode='w', delete=False) as log:
-        log_file = log.name
-        print(f'Writing execution log to {log_file}')
-        log.write(f'CMD: {cmd}\n\n')
-        ret = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT)
+    print(' '.join(cmd))
+    if args.result_file:
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as log:
+            log_file = log.name
+            print(f'Writing execution log to {log_file}')
+            log.write(f'CMD: {cmd}\n\n')
+            log.flush()
+            ret = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT)
+            ret.check_returncode()
+        with open(log_file, 'r') as f:
+            result_str = f.read()
+        return result_str
+    else:
+        ret = subprocess.run(cmd)
         ret.check_returncode()
-    with open(log_file, 'r') as f:
-        result_str = f.read()
-    return result_str
+        return None
 
 def parse_result(result):
     lines = result.split('\n')
@@ -298,18 +304,6 @@ def parse_result(result):
 
     return values_dict
 
-def print_header():
-    csv_header = 'system,suffix,workload,workload_size,threads,corobatchsize,' + \
-        'log,NUMALocal,GC,Interleave,PIMMultiget,YCSBzipfian,' + \
-        'time(s),commits,aborts,p99(ms),' + \
-        'Epkg(J),Eram(J),' + \
-        'dram.rd(MiB),dram.wr(MiB),' + \
-        'pim.rd(MiB),pim.wr(MiB),' + \
-        'PIMUtil,PIMmramratio,PIMmramsize(B)' + \
-        '\n'
-    with open(args.result_file, 'w') as f:
-        f.write(csv_header)
-
 def print_result(args, values):
     csv = f"{args.system},{args.executable_suffix},{args.workload},{args.workload_size}," + \
         f"{args.threads},{args.coro_batch_size}," + \
@@ -324,15 +318,28 @@ def print_result(args, values):
     with open(args.result_file, 'a') as f:
         f.write(csv)
 
-if __name__ == "__main__":
-    args = parse_args()
-    if args.print_header:
-        print_header()
-        exit(0)
-    print(args)
+## --- Interfaces Below ---
+def print_header(result_file):
+    csv_header = 'system,suffix,workload,workload_size,threads,corobatchsize,' + \
+        'log,NUMALocal,GC,Interleave,PIMMultiget,YCSBzipfian,' + \
+        'time(s),commits,aborts,p99(ms),' + \
+        'Epkg(J),Eram(J),' + \
+        'dram.rd(MiB),dram.wr(MiB),' + \
+        'pim.rd(MiB),pim.wr(MiB),' + \
+        'PIMUtil,PIMmramratio,PIMmramsize(B)' + \
+        '\n'
+    with open(result_file, 'w') as f:
+        f.write(csv_header)
+
+def evaluate(argv = sys.argv[1:]):
+    args = parse_args(argv)
     allocate_hugetlb(args)
     cleanup_log_dir(args)
-    result = evaluate(args)
-    values = parse_result(result)
-    print_result(args, values)
+    result = measure(args)
+    if args.result_file:
+        values = parse_result(result)
+        print_result(args, values)
     wrapup_log_dir(args)
+
+if __name__ == "__main__":
+    evaluate()

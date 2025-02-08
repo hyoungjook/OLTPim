@@ -127,7 +127,7 @@ def plot_overall(args):
         'totalbw': {MOSAICDB: [], OLTPIM: []},
     }
     tpcc = {
-        'threads': {MOSAICDB: [], OLTPIM: []},
+        'ratio': {MOSAICDB: [], OLTPIM: []},
         'tput': {MOSAICDB: [], OLTPIM: []},
         'p99': {MOSAICDB: [], OLTPIM: []},
         'dramrd': {MOSAICDB: [], OLTPIM: []},
@@ -202,9 +202,17 @@ def plot_overall(args):
                 system = row['system']
                 workload = row['workload']
                 if workload == 'TPC-C':
-                    if row['GC'] == 'True':
-                        tpcc['threads'][system].append(int(row['threads']))
-                        append_to_stats(tpcc, system, row)
+                    tpcc['ratio'][system].append('9:1')
+                    append_to_stats(tpcc, system, row)
+                elif workload == 'TPC-C1':
+                    tpcc['ratio'][system].append('6:4')
+                    append_to_stats(tpcc, system, row)
+                elif workload == 'TPC-C2':
+                    tpcc['ratio'][system].append('3:7')
+                    append_to_stats(tpcc, system, row)
+                elif workload == 'TPC-C3':
+                    tpcc['ratio'][system].append('0:10')
+                    append_to_stats(tpcc, system, row)
 
     fig, axes = plt.subplots(2, 6, figsize=(12, 3), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
@@ -212,7 +220,7 @@ def plot_overall(args):
     size_labels = [SIZE_TO_LABEL[ycsbc['size'][MOSAICDB][x]] for x in x_indices]
     ycsbi_labels = [INS_TO_LABEL[ycsbi['ins-ratio'][MOSAICDB][x]] for x in x_indices]
     ycsbs_labels = [str(ycsbs['scan-len'][MOSAICDB][x]) for x in x_indices]
-    tpcc_labels = [str(tpcc['threads'][MOSAICDB][x]) for x in x_indices]
+    tpcc_labels = [str(tpcc['ratio'][MOSAICDB][x]) for x in x_indices]
 
     tput_ylim = max(
         ycsbc['tput'][MOSAICDB] + ycsbc['tput'][OLTPIM] +
@@ -288,7 +296,7 @@ def plot_overall(args):
     axes[1][2].set_xlabel('Table Size')
     axes[1][3].set_xlabel('Table Size')
     axes[1][4].set_xlabel('Insert Ratio')
-    axes[1][5].set_xlabel('Threads')
+    axes[1][5].set_xlabel('Writes:Reads Ratio')
     axes[1][1].set_yticklabels('')
     axes[1][2].set_yticklabels('')
     axes[1][3].set_yticklabels('')

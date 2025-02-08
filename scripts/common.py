@@ -1,4 +1,5 @@
 import argparse
+import evaluate
 import os
 from pathlib import Path
 import subprocess
@@ -48,11 +49,9 @@ def create_result_file(args, exp_name):
             args.result_file[system] = result_file_path(args, exp_name, system)
 
 def print_header(args):
-    runner = str(Path(__file__).parent / 'evaluate.py')
     for system, enabled in args.systems.items():
         if enabled:
-            cmd = ['python3', runner, '--result-file', args.result_file[system], '--print-header']
-            subprocess.run(cmd)
+            evaluate.print_header(args.result_file[system])
 
 def run(args, system, workload, workload_size,
         bench_seconds, bench_threads, hugetlb_size_gb,
@@ -62,9 +61,7 @@ def run(args, system, workload, workload_size,
         executable_suffix=None):
     if not args.systems[system]:
         return
-    runner = str(Path(__file__).parent / 'evaluate.py')
     cmd = [
-        'python3', runner,
         '--build-dir', args.build_dir,
         '--log-dir', args.log_dir,
         '--hugetlb-size-gb', str(hugetlb_size_gb),
@@ -95,5 +92,4 @@ def run(args, system, workload, workload_size,
         cmd += ['--ycsb-zipfian-theta', str(ycsb_zipfian_theta)]
     if executable_suffix:
         cmd += ['--executable-suffix', executable_suffix]
-    ret = subprocess.run(cmd)
-    ret.check_returncode()
+    evaluate.evaluate(cmd)
