@@ -616,9 +616,10 @@ def plot_skew(args):
     fig, axes = plt.subplots(1, 2, figsize=(5, 2), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
 
+    one_minus_theta = lambda l: [1 - t for t in l]
     def simple_plot(axis, workload, yname):
-        axis.plot(workload['theta'][MOSAICDB], workload[yname][MOSAICDB], color='black', linestyle='-', marker='o', label=MOSAICDB)
-        axis.plot(workload['theta'][OLTPIM], workload[yname][OLTPIM], color='red', linestyle='-', marker='o', label=OLTPIM)
+        axis.plot(one_minus_theta(workload['theta'][MOSAICDB]), workload[yname][MOSAICDB], color='black', linestyle='-', marker='o', label=MOSAICDB)
+        axis.plot(one_minus_theta(workload['theta'][OLTPIM]), workload[yname][OLTPIM], color='red', linestyle='-', marker='o', label=OLTPIM)
         axis.set_xlabel('')
         axis.xaxis.set_major_formatter(formatter)
         axis.yaxis.set_major_formatter(formatter)
@@ -628,7 +629,7 @@ def plot_skew(args):
     axes[0].set_ylabel('Throughput (MTPS)')
     simple_plot(axes[1], ycsbb, 'totalbw')
     axes[1].set_ylabel('Memory Traffic\nPer Txn (KBPT)')
-    fig.supxlabel('Zipfian Theta')
+    fig.supxlabel('Workload Uniformity (1-θ)')
     legh, legl = axes[0].get_legend_handles_labels()
     fig.legend(legh, legl, ncol=2, loc='lower center', bbox_to_anchor=(0.5, 1))
     plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')
@@ -638,6 +639,8 @@ def plot_batchsize(args):
     EXP_NAME = 'batchsize'
     PLOT_NAME = 'batchsize'
     OLTPIM_NOMULTIGET = OLTPIM + ' (no MultiGet)'
+    MOSAICDB_OPTIMAL_BS = 8
+    OLTPIM_OPTIMAL_BS = 256
     stats = {
         'batchsize': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
         'tput': {MOSAICDB: [], OLTPIM_NOMULTIGET: [], OLTPIM: []},
@@ -678,22 +681,33 @@ def plot_batchsize(args):
     fig, axes = plt.subplots(2, 2, figsize=(5, 3), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
 
-    def simple_plot(axis, yname, ylabel, ylog):
+    def at_optimal_bs(yname, system, bs):
+        for b, y in zip(stats['batchsize'][system], stats[yname][system]):
+            if b == bs:
+                return y
+        assert False
+    def simple_plot(axis, yname, ylabel, ylog, latency_set_yticks=False):
         axis.plot(stats['batchsize'][MOSAICDB], stats[yname][MOSAICDB], linestyle='-', marker='o', color='black', label=MOSAICDB)
-        axis.plot(stats['batchsize'][OLTPIM_NOMULTIGET], stats[yname][OLTPIM_NOMULTIGET], linestyle='--', marker='*', color='pink', label=OLTPIM_NOMULTIGET)
+        axis.plot(stats['batchsize'][OLTPIM_NOMULTIGET], stats[yname][OLTPIM_NOMULTIGET], linestyle='--', marker='o', color='pink', label=OLTPIM_NOMULTIGET)
         axis.plot(stats['batchsize'][OLTPIM], stats[yname][OLTPIM], linestyle='-', marker='o', color='red', label=OLTPIM)
+        mosaicdb_at_optimal_bs = at_optimal_bs(yname, MOSAICDB, MOSAICDB_OPTIMAL_BS)
+        oltpim_at_optimal_bs = at_optimal_bs(yname, OLTPIM, OLTPIM_OPTIMAL_BS)
+        axis.plot([MOSAICDB_OPTIMAL_BS], [mosaicdb_at_optimal_bs], marker='*', color='black', markersize=15)
+        axis.plot([OLTPIM_OPTIMAL_BS], [oltpim_at_optimal_bs], marker='*', color='red', markersize=15)
         axis.set_xlabel('')
         axis.set_ylabel(ylabel)
         axis.set_xscale('log')
         if ylog: axis.set_yscale('log')
         else: axis.set_ylim(bottom=0)
         axis.set_xticks([1, 10, 100, 1000])
+        if latency_set_yticks:
+            axis.set_yticks([0.1, 1, 10, 100])
         axis.xaxis.set_major_formatter(formatter)
         axis.yaxis.set_major_formatter(formatter)
         axis.set_xlim(1, 2000)
         axis.minorticks_off()
     simple_plot(axes[0][0], 'tput', 'Throughput (MTPS)', False)
-    simple_plot(axes[0][1], 'p99', 'P99 Latency (ms)', True)
+    simple_plot(axes[0][1], 'p99', 'P99 Latency (ms)', True, True)
     simple_plot(axes[1][0], 'totalbw', 'Memory Traffic\nPer Txn (KBPT)', False)
     simple_plot(axes[1][1], 'abort', 'Abort Rate (%)', True)
     axes[0][0].set_xticklabels('')
