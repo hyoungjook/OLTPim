@@ -1,5 +1,7 @@
 from common import *
 import csv
+import matplotlib.legend_handler as mlegh
+import matplotlib.lines as mline
 import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter, LogFormatterSciNotation
@@ -50,8 +52,10 @@ def plot_intro(args):
         width = 0.3
         indices = range(len(LABELS))
         axis.bar([x - width/2 for x in indices], stats_1B[yname][MOSAICDB], width, color='white', edgecolor='black', hatch='\\\\', label=MOSAICDB)
-        rects = axis.bar([x + width/2 for x in indices], stats_1B[yname][OLTPIM], width, color='white', edgecolor='red', hatch='//', label=OLTPIM)
+        axis.bar([x + width/2 for x in indices], stats_1B[yname][OLTPIM], width, color='white', edgecolor='red', hatch='//', label=OLTPIM)
         speedups = [f'{o/m:.2f}x' for m, o in zip(stats_1B[yname][MOSAICDB], stats_1B[yname][OLTPIM])]
+        maxs = [max(m, o) for m, o in zip(stats_1B[yname][MOSAICDB], stats_1B[yname][OLTPIM])]
+        rects = axis.bar(indices, maxs, alpha=0)
         axis.bar_label(rects, labels=speedups, padding=3)
         axis.set_xticks(indices)
         axis.set_xticklabels(LABELS)
@@ -265,17 +269,17 @@ def plot_overall(args):
         indices1 = [x - width/2 for x in indices]
         indices2 = [x + width/2 for x in indices]
         bottom = [0 for _ in indices]
-        axis.bar(indices1, workload['dramrd'][MOSAICDB], width, bottom=bottom, color='lightgreen', edgecolor='black', hatch='\\\\')
+        axis.bar(indices1, workload['dramrd'][MOSAICDB], width, bottom=bottom, color='lightgreen', edgecolor='black')
         bottom = [b + n for b, n in zip(bottom, workload['dramrd'][MOSAICDB])]
-        axis.bar(indices1, workload['dramwr'][MOSAICDB], width, bottom=bottom, color='green', edgecolor='black', hatch='\\\\')
+        axis.bar(indices1, workload['dramwr'][MOSAICDB], width, bottom=bottom, color='green', edgecolor='black')
         bottom = [0 for _ in indices]
-        axis.bar(indices2, workload['dramrd'][OLTPIM], width, bottom=bottom, color='lightgreen', edgecolor='red', hatch='//')
+        axis.bar(indices2, workload['dramrd'][OLTPIM], width, bottom=bottom, color='lightgreen', edgecolor='red')
         bottom = [b + n for b, n in zip(bottom, workload['dramrd'][OLTPIM])]
-        axis.bar(indices2, workload['dramwr'][OLTPIM], width, bottom=bottom, color='green', edgecolor='red', hatch='//')
+        axis.bar(indices2, workload['dramwr'][OLTPIM], width, bottom=bottom, color='green', edgecolor='red')
         bottom = [b + n for b, n in zip(bottom, workload['dramwr'][OLTPIM])]
-        axis.bar(indices2, workload['pimrd'][OLTPIM], width, bottom=bottom, color='lightgrey', edgecolor='red', hatch='//')
+        axis.bar(indices2, workload['pimrd'][OLTPIM], width, bottom=bottom, color='lightgrey', edgecolor='red')
         bottom = [b + n for b, n in zip(bottom, workload['pimrd'][OLTPIM])]
-        axis.bar(indices2, workload['pimwr'][OLTPIM], width, bottom=bottom, color='grey', edgecolor='red', hatch='//')
+        axis.bar(indices2, workload['pimwr'][OLTPIM], width, bottom=bottom, color='grey', edgecolor='red')
         axis.set_xticks(indices)
         axis.set_xticklabels(labels)
         axis.set_xlabel('')
@@ -302,17 +306,23 @@ def plot_overall(args):
     axes[1][3].set_yticklabels('')
     axes[1][4].set_yticklabels('')
 
-    legh1, legl1 = axes[0][2].get_legend_handles_labels()
-    legh2 = [
-        mpatch.Patch(facecolor='white', edgecolor='black', hatch='\\\\'),
-        mpatch.Patch(facecolor='white', edgecolor='red', hatch='//'), 
+    legh = [
+        (
+            mline.Line2D([0], [0], color='black', marker='o'),
+            mpatch.Patch(facecolor='white', edgecolor='black')
+        ),
+        (
+            mline.Line2D([0], [0], color='red', marker='o'),
+            mpatch.Patch(facecolor='white', edgecolor='red')
+        ),
         mpatch.Patch(color='lightgreen'), mpatch.Patch(color='green'),
         mpatch.Patch(color='lightgrey'), mpatch.Patch(color='grey'),
     ]
-    legl2 = [
+    legl = [
         MOSAICDB, OLTPIM, 'DRAM.Rd', 'DRAM.Wr', 'PIM.Rd', 'PIM.Wr',
     ]
-    fig.legend(legh1 + legh2, legl1 + legl2, ncol=4, loc='lower center', bbox_to_anchor=(0.5, 1))
+    fig.legend(legh, legl, ncol=6, loc='lower center', bbox_to_anchor=(0.5, 1),
+        handler_map={tuple: mlegh.HandlerTuple(ndivide=None)})
     plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')
     plt.close(fig)
 
@@ -536,21 +546,21 @@ def plot_logging(args):
         indices1 = [x - width/2 for x in indices]
         indices2 = [x + width/2 for x in indices]
         bottom = [0 for _ in indices]
-        axis.bar(indices1, workload[True]['dramrd'], width, bottom=bottom, color='lightgreen', edgecolor='red', hatch='//')
+        axis.bar(indices1, workload[True]['dramrd'], width, bottom=bottom, color='lightgreen', edgecolor='red')
         bottom = [b + n for b, n in zip(bottom, workload[True]['dramrd'])]
-        axis.bar(indices1, workload[True]['dramwr'], width, bottom=bottom, color='green', edgecolor='red', hatch='//')
+        axis.bar(indices1, workload[True]['dramwr'], width, bottom=bottom, color='green', edgecolor='red')
         bottom = [b + n for b, n in zip(bottom, workload[True]['dramwr'])]
-        axis.bar(indices1, workload[True]['pimrd'], width, bottom=bottom, color='lightgrey', edgecolor='red', hatch='//')
+        axis.bar(indices1, workload[True]['pimrd'], width, bottom=bottom, color='lightgrey', edgecolor='red')
         bottom = [b + n for b, n in zip(bottom, workload[True]['pimrd'])]
-        axis.bar(indices1, workload[True]['pimwr'], width, bottom=bottom, color='grey', edgecolor='red', hatch='//')
+        axis.bar(indices1, workload[True]['pimwr'], width, bottom=bottom, color='grey', edgecolor='red')
         bottom = [0 for _ in indices]
-        axis.bar(indices2, workload[False]['dramrd'], width, bottom=bottom, color='lightgreen', edgecolor='pink', hatch='xx')
+        axis.bar(indices2, workload[False]['dramrd'], width, bottom=bottom, color='lightgreen', edgecolor='pink')
         bottom = [b + n for b, n in zip(bottom, workload[False]['dramrd'])]
-        axis.bar(indices2, workload[False]['dramwr'], width, bottom=bottom, color='green', edgecolor='pink', hatch='xx')
+        axis.bar(indices2, workload[False]['dramwr'], width, bottom=bottom, color='green', edgecolor='pink')
         bottom = [b + n for b, n in zip(bottom, workload[False]['dramwr'])]
-        axis.bar(indices2, workload[False]['pimrd'], width, bottom=bottom, color='lightgrey', edgecolor='pink', hatch='xx')
+        axis.bar(indices2, workload[False]['pimrd'], width, bottom=bottom, color='lightgrey', edgecolor='pink')
         bottom = [b + n for b, n in zip(bottom, workload[False]['pimrd'])]
-        axis.bar(indices2, workload[False]['pimwr'], width, bottom=bottom, color='grey', edgecolor='pink', hatch='xx')
+        axis.bar(indices2, workload[False]['pimwr'], width, bottom=bottom, color='grey', edgecolor='pink')
         axis.set_xticks(indices)
         axis.set_xticklabels(labels)
         axis.set_xlabel('')
@@ -729,8 +739,8 @@ def plot_breakdown(args):
         MOSAICDB,
         '+NUMA\nLocal',
         'Naive\nOLTPim',
-        '+Direct\nPIM Access', 
-        '+PIM&CPU\nInterleave',
+        '+Direct\nPIM\nAccess', 
+        '+PIM\n&CPU\nIntrleve',
         '+NUMA\nLocal'
     ]
     stats = {
@@ -780,8 +790,8 @@ def plot_breakdown(args):
         indices1 = [x - width/2 for x in range(num_y0, len(X_LABELS))]
         indices2 = [x + width/2 for x in range(num_y0, len(X_LABELS))]
         rects0 = axis.bar(indices0, ydata0, 1.5*width, color='white', edgecolor='black', hatch='\\\\', label=MOSAICDB)
-        rects1 = axis.bar(indices1, ydata1, width, color='white', edgecolor='pink', hatch='/', label='PIM Index')
-        rects2 = axis.bar(indices2, ydata2, width, color='white', edgecolor='red', hatch='//', label='PIM Index&Versions')
+        rects1 = axis.bar(indices1, ydata1, width, color='white', edgecolor='pink', hatch='/', label=OLTPIM + ' (idx only)')
+        rects2 = axis.bar(indices2, ydata2, width, color='white', edgecolor='red', hatch='//', label=OLTPIM + ' (idx&ver)')
         if datalabels:
             axis.bar_label(rects0, labels=labelgen(ydata0), padding=3)
             axis.bar_label(rects1, labels=labelgen(ydata1), padding=3)
@@ -799,9 +809,10 @@ def plot_breakdown(args):
         axis.axvline(num_y0 - 0.5, color='black', linestyle='--', linewidth=1)
     draw_bar(axes[0], stats['tput'][MOSAICDB], stats['tput'][OLTPIM_IDXONLY], stats['tput'][OLTPIM], 'Throughput (MTPS)', True)
     draw_bar(axes[1], stats['totalbw'][MOSAICDB], stats['totalbw'][OLTPIM_IDXONLY], stats['totalbw'][OLTPIM], 'Memory Traffic\nPer Txn (KBPT)', False)
-    axes[1].legend(loc='upper right', ncol=1)
     axes[1].set_xticklabels(x_labels)
-    plt.savefig(result_plot_path(args, PLOT_NAME))
+    legh, legl = axes[1].get_legend_handles_labels()
+    fig.legend(legh, legl, ncol=3, loc='lower center', bbox_to_anchor=(0.5, 1))
+    plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')
     plt.close(fig)
 
 if __name__ == "__main__":
