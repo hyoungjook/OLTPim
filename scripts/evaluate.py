@@ -310,7 +310,6 @@ def print_result(args, values):
         f"{args.logging},{args.numa_local_workload}," + \
         f"{args.gc},{args.interleave},{args.pim_multiget},{args.ycsb_zipfian_theta}," + \
         f"{values['time(s)']},{values['commits']},{values['aborts']},{values['p99(ms)']}," + \
-        f"{values['Epkg(J)']},{values['Eram(J)']}," + \
         f"{values['dram.rd(MiB)']},{values['dram.wr(MiB)']}," + \
         f"{values['pim.rd(MiB)']},{values['pim.wr(MiB)']}," + \
         f"{values['pim-util']},{values['pim-mram-ratio']},{values['pim-mram-size(B)']}" + \

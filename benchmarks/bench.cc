@@ -280,7 +280,6 @@ void bench_runner::start_measurement() {
       dup2(eng_perf_fds[1], STDERR_FILENO);
       exit(execl("/usr/bin/perf", "perf", "stat", "-a", "-e",
         ermia::config::measure_energy_on_upmem_server ? (
-          "power/energy-pkg/,power/energy-ram/,"
           // Hardcoded for upmemcloud9
           "uncore_imc_0/cas_count_read/,uncore_imc_0/cas_count_write/,"
           "uncore_imc_1/cas_count_read/,uncore_imc_1/cas_count_write/,"
@@ -289,7 +288,6 @@ void bench_runner::start_measurement() {
           "uncore_imc_4/cas_count_read/,uncore_imc_4/cas_count_write/,"
           "uncore_imc_5/cas_count_read/,uncore_imc_5/cas_count_write/"
         ) : (
-          "power/energy-pkg/,power/energy-ram/,"
           "uncore_imc/cas_count_read/,uncore_imc/cas_count_write/"
         ),
         nullptr));
@@ -516,7 +514,6 @@ void bench_runner::start_measurement() {
   double dram_rd_mib, dram_wr_mib;
   double pim_rd_mib, pim_wr_mib;
   double pim_util, pim_mram_ratio, pim_mram_avg_size;
-  double energy_pkg, energy_ram;
   if (ermia::config::measure_energy) {
     FILE *outf;
     char *tok_buf;
@@ -566,14 +563,6 @@ void bench_runner::start_measurement() {
           dram_wr_mib += std::stod(tokens[tok_i-2]);
           if (tokens[tok_i-1] != "MiB") check_unit_correct = false;
         }
-      }
-    }
-    for (tok_i = 0; tok_i < tokens.size(); ++tok_i) {
-      if (tokens[tok_i] == "power/energy-pkg/") {
-        energy_pkg = std::stod(tokens[tok_i - 2]);
-      }
-      else if (tokens[tok_i] == "power/energy-ram/") {
-        energy_ram = std::stod(tokens[tok_i - 2]);
       }
     }
     if (!check_unit_correct) {
@@ -628,8 +617,7 @@ void bench_runner::start_measurement() {
         << n_aborts << " aborts, "
         << p99_latency_ms << " p99(ms), ";
   if (ermia::config::measure_energy) {
-    std::cout << energy_pkg << " Epkg(J), "
-          << energy_ram << " Eram(J), "
+    std::cout
           << dram_rd_mib << " dram.rd(MiB), "
           << dram_wr_mib << " dram.wr(MiB), ";
     std::cout << pim_rd_mib << " pim.rd(MiB), "
