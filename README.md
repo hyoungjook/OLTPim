@@ -1,6 +1,7 @@
 # OLTPim
 
 OLTPim is a research DBMS designed to take advantage of the Processing-in-Memory (PIM) system.
+It is implemented by connecting the [OLTPim Engine](https://github.com/hyoungjook/oltpim-engine) with [MosaicDB](https://github.com/sfu-dis/mosaicdb).
 
 ## Environment Setup
 
