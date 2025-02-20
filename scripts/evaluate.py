@@ -322,7 +322,6 @@ def print_header(result_file):
     csv_header = 'system,suffix,workload,workload_size,threads,corobatchsize,' + \
         'log,NUMALocal,GC,Interleave,PIMMultiget,YCSBzipfian,' + \
         'time(s),commits,aborts,p99(ms),' + \
-        'Epkg(J),Eram(J),' + \
         'dram.rd(MiB),dram.wr(MiB),' + \
         'pim.rd(MiB),pim.wr(MiB),' + \
         'PIMUtil,PIMmramratio,PIMmramsize(B)' + \

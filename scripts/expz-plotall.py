@@ -632,7 +632,7 @@ def plot_skew(args):
             reader = csv.DictReader(f)
             for row in reader:
                 system = row['system']
-                if row['workload'] == 'YCSB-B' and int(row['workload_size']) == 10**8:
+                if row['workload'] == 'YCSB-B' and int(row['workload_size']) == 10**9:
                     append_to_stats(ycsbb, system, row)
 
     fig, axes = plt.subplots(1, 2, figsize=(5, 2), constrained_layout=True)
@@ -754,23 +754,14 @@ def plot_batchsize(args):
 def plot_breakdown(args):
     EXP_NAME = 'breakdown'
     PLOT_NAME = 'breakdown'
-    OLTPIM_IDXONLY = OLTPIM + ' (indexonly)'
-    X_LABELS = [
-        MOSAICDB,
-        '+NUMA\nLocal',
-        'Naive\nOLTPim',
-        '+Direct\nPIM\nAccess', 
-        '+PIM\n&CPU\nIntrleve',
-        '+NUMA\nLocal'
-    ]
     stats = {
-        'tput': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
-        'p99': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
-        'dramrd': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
-        'dramwr': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
-        'pimrd': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
-        'pimwr': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []},
-        'totalbw': {MOSAICDB: [], OLTPIM_IDXONLY: [], OLTPIM: []}
+        'tput': {MOSAICDB: [], OLTPIM: []},
+        'p99': {MOSAICDB: [], OLTPIM: []},
+        'dramrd': {MOSAICDB: [], OLTPIM: []},
+        'dramwr': {MOSAICDB: [], OLTPIM: []},
+        'pimrd': {MOSAICDB: [], OLTPIM: []},
+        'pimwr': {MOSAICDB: [], OLTPIM: []},
+        'totalbw': {MOSAICDB: [], OLTPIM: []},
     }
     def append_to_stats(system, row):
         stats['tput'][system].append(float(row['commits']) / float(row['time(s)']) / 1000000)
@@ -792,30 +783,40 @@ def plot_breakdown(args):
     with open(result_file_path(args, EXP_NAME, OLTPIM), 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if 'indexonly' in row['suffix']:
-                append_to_stats(OLTPIM_IDXONLY, row)
-            else:
-                append_to_stats(OLTPIM, row)
+            append_to_stats(OLTPIM, row)
 
-    fig, axes = plt.subplots(2, 1, figsize=(5, 3), constrained_layout=True)
+    fig, axes = plt.subplots(1, 1, figsize=(5, 2), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
+    
+    #X_LABELS = [
+    #    MOSAICDB,
+    #    '+PIM\nIndex',
+    #    '+PIM\nMVCC',
+    #    '+Direct\nAccess', 
+    #    '+Inter-\nleave',
+    #    MOSAICDB,
+    #    OLTPIM,
+    #]
+    X_LABELS = ['(A)', '(B)', '(C)', '(D)', '(E)', '(AN)', '(EN)']
     x_indices = range(len(X_LABELS))
     x_labels = X_LABELS
 
-    def draw_bar(axis, ydata0, ydata1, ydata2, ylabel, datalabels):
-        width = 0.4
+    def draw_bar(axis, ydata0, ydata1, ylabel, datalabels):
+        width = 0.5
         labelgen = lambda ys: [f"{y:.1f}" for y in ys]
-        num_y0 = len(ydata0)
-        indices0 = range(num_y0)
-        indices1 = [x - width/2 for x in range(num_y0, len(X_LABELS))]
-        indices2 = [x + width/2 for x in range(num_y0, len(X_LABELS))]
-        rects0 = axis.bar(indices0, ydata0, 1.5*width, color='white', edgecolor='black', hatch='\\\\', label=MOSAICDB)
-        rects1 = axis.bar(indices1, ydata1, width, color='white', edgecolor='pink', hatch='/', label=OLTPIM + ' (idx only)')
-        rects2 = axis.bar(indices2, ydata2, width, color='white', edgecolor='red', hatch='//', label=OLTPIM + ' (idx&ver)')
+        indices00 = [0]
+        indices01 = [5]
+        indices10 = [1, 2, 3, 4]
+        indices11 = [6]
+        rects00 = axis.bar(indices00, ydata0[0:1], width, color='white', edgecolor='black', hatch='\\\\', label=MOSAICDB)
+        rects10 = axis.bar(indices10, ydata1[0:4], width, color='white', edgecolor='red', hatch='//', label=OLTPIM)
+        rects01 = axis.bar(indices01, ydata0[1:2], width, color='white', edgecolor='black', hatch='\\\\\\\\', label=MOSAICDB + ' (NUMA-partitioned)')
+        rects11 = axis.bar(indices11, ydata1[4:5], width, color='white', edgecolor='red', hatch='////', label=OLTPIM + ' (NUMA-partitioned)')
         if datalabels:
-            axis.bar_label(rects0, labels=labelgen(ydata0), padding=3)
-            axis.bar_label(rects1, labels=labelgen(ydata1), padding=3)
-            axis.bar_label(rects2, labels=labelgen(ydata2), padding=3)
+            axis.bar_label(rects00, labels=labelgen(ydata0[0:1]), padding=3)
+            axis.bar_label(rects10, labels=labelgen(ydata1[0:4]), padding=3)
+            axis.bar_label(rects01, labels=labelgen(ydata0[1:2]), padding=3)
+            axis.bar_label(rects11, labels=labelgen(ydata1[4:5]), padding=3)
         axis.set_xticks(x_indices)
         axis.set_xticklabels('')
         axis.set_xlabel('')
@@ -826,14 +827,18 @@ def plot_breakdown(args):
         axis.yaxis.set_major_formatter(formatter)
         axis.minorticks_off()
         axis.set_xlim(-0.5, len(x_indices) - 0.5)
-        axis.axvline(num_y0 - 0.5, color='black', linestyle='--', linewidth=1)
+        axis.axvline(4.5, color='black', linestyle='--', linewidth=1)
         axis.grid(axis='y', color='lightgrey', linestyle='--')
         axis.set_axisbelow(True)
-    draw_bar(axes[0], stats['tput'][MOSAICDB], stats['tput'][OLTPIM_IDXONLY], stats['tput'][OLTPIM], 'Throughput\n(MTPS)', True)
-    draw_bar(axes[1], stats['totalbw'][MOSAICDB], stats['totalbw'][OLTPIM_IDXONLY], stats['totalbw'][OLTPIM], 'Memory Traffic\n(KBPT)', False)
-    axes[1].set_xticklabels(x_labels)
-    legh, legl = axes[1].get_legend_handles_labels()
-    fig.legend(legh, legl, ncol=3, loc='lower center', bbox_to_anchor=(0.5, 1))
+    draw_bar(axes, stats['tput'][MOSAICDB], stats['tput'][OLTPIM], 'Throughput\n(MTPS)', True)
+    #draw_bar(axes[1], stats['totalbw'][MOSAICDB], stats['totalbw'][OLTPIM], 'Memory Traffic\n(KBPT)', False, True)
+    axes.set_xticklabels(x_labels)
+    #axes.set_xticks([5.5], minor=True)
+    #axes.set_xticklabels(['\n+NUMA Local'], minor=True)
+    #axes.tick_params(axis='x', which='major', labelsize=8)
+    #axes.tick_params(axis='x', which='minor', labelsize=8, length=0, pad=8)
+    legh, legl = axes.get_legend_handles_labels()
+    fig.legend(legh, legl, ncol=2, loc='lower center', bbox_to_anchor=(0.5, 1))
     plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')
     plt.close(fig)
 

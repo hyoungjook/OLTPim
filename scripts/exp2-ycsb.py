@@ -5,12 +5,12 @@ EXP_NAME = 'ycsb'
 TEST_CASES = [
     ('YCSB-C', [10**6, 10**7, 10**8, 10**9], True, True, 0, False),
     ('YCSB-B', [10**6, 10**7, 10**8, 10**9], True, True, 0, False),
-    ('YCSB-B', [10**8], True, True, [0.5, 0.99], False),
+    ('YCSB-B', [10**9], True, True, [0.5, 0.99], False),
     ('YCSB-A', [10**6, 10**7, 10**8, 10**9], [False, True], True, 0, False),
     (['YCSB-I1', 'YCSB-I2', 'YCSB-I3', 'YCSB-I4'], 10**8, True, True, 0, False),
     (['YCSB-I1', 'YCSB-I2', 'YCSB-I3', 'YCSB-I4'], 10**8, True, False, 0, True),
     (['YCSB-U1', 'YCSB-U2', 'YCSB-U3', 'YCSB-U4'], 10**8, True, [False, True], 0, True),
-    (['YCSB-S2', 'YCSB-S4', 'YCSB-S8', 'YCSB-S16'], 10**8, True, True, 0, False),
+    (['YCSB-S2', 'YCSB-S4', 'YCSB-S8', 'YCSB-S16'], 10**9, True, True, 0, False),
 ]
 COROBATCH_SIZE = lambda system, workload: \
     8 if system == MOSAICDB else (128 if 'YCSB-S' in workload else 256)

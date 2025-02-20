@@ -1,120 +1,115 @@
-## The Art of Latency Hiding in Modern Database Engines (VLDB '24)
+# OLTPim
 
-MosaicDB is a research storage engine that systematically hides various types of latency in modern memory-optimized database systems.
+OLTPim is a research DBMS designed to take advantage of the Processing-in-Memory (PIM) system.
 
-See details in our [VLDB 2024 paper](https://www.vldb.org/pvldb/vol17/p577-huang.pdf) below. If you use our work, please cite:
+## Environment Setup
 
-```
-The Art of Latency Hiding in Modern Database Engines.
-Kaisong Huang, Tianzheng Wang, Qingqing Zhou and Qingzhong Meng.
-PVLDB 17(3) (VLDB 2024)
-```
-
-### Environment configurations
-Step 1: Software dependencies
-* cmake
-* python2
-* gcc-10
-* libnuma
-* libibverbs
-* libgflags
-* libgoogle-glog
-* liburing
-
-Example for Ubuntu
-```
-$ sudo apt-get install cmake gcc-10 g++-10 libc++-dev libc++abi-dev libnuma-dev libibverbs-dev libgflags-dev libgoogle-glog-dev liburing-dev
+### Cloning the project
+```shell
+git clone https://github.com/hyoungjook/OLTPim.git
+cd OLTPim
+git submodule update --init --recursive
 ```
 
-Step 2: Make sure you have enough huge pages
-
-MosaicDB uses `mmap` with `MAP_HUGETLB` (available after Linux 2.6.32) to allocate huge pages. Almost all memory allocations come from the space carved out here. Assuming the default huge page size is 2MB, the command below will allocate 2x MB of memory:
-```
-$ sudo sh -c 'echo [x pages] > /proc/sys/vm/nr_hugepages'
-```
-
-Step 3: Set mlock limits. Add the following to `/etc/security/limits.conf` (replace "[user]" with your username):
-```
-[user] soft memlock unlimited
-[user] hard memlock unlimited
-```
-Step 4: Re-login to apply the changes
-
---------
-### Compile
-We do not allow building in the source directory:
-
-```
-$ mkdir build
-$ cd build
-$ cmake ../ -DCMAKE_BUILD_TYPE=[Debug|Release|RelWithDebInfo]
-$ make
-```
---------
-### Run
-Required options:
-* -log_data_dir=[path] (path to the directory where the log files will be stored)
-* -node_memory_gb=[#] (the amount of memory in GB that the node has)
-* -seconds=[#]
-* -threads=[#]
-
-MosaicDB-specific options:
-* -ycsb_read_tx_type=[hybrid-coro|nested-coro|flat-coro] (choose according to the executable)
-* -coro_scheduler=2
-* -coro_batch_size=[#] (8, by default)
-* -coro_cold_queue_size=[#] (16, by default)
-* -coro_check_cold_tx_interval=[#] (8, by default)
-
-Pipeline-specific options:
-* -ycsb_read_tx_type=[hybrid-coro|nested-coro|flat-coro] (choose according to the executable)
-* -coro_scheduler=1
-* -coro_batch_size=[#] (16, by default)
-* -coro_cold_tx_threshold=[#] (8, by default)
-
-Batch-specific options:
-* -ycsb_read_tx_type=[hybrid-coro|nested-coro|flat-coro] (choose according to the executable)
-* -coro_scheduler=0
-* -coro_batch_size=[#] (16, by default)
-* -coro_cold_tx_threshold=[#] (8, by default)
-
-Sequential-specific options:
-* -ycsb_read_tx_type=sequential
-
-For more options, please refer to `sm-config.h`.
-
-Example for MosaicDB:
-```
-$ ./ycsb_SI_hybrid_coro \
--log_data_dir=/mnt/nvme0n1/mosaicdb-log \
--node_memory_gb=50 \
--ycsb_workload=C -ycsb_read_tx_type=hybrid-coro \
--ycsb_hot_table_size=300000000 \
--ycsb_cold_table_size=3000000 \
--ycsb_ops_per_tx=10 \
--ycsb_cold_ops_per_tx=2 \
--ycsb_ops_per_hot_tx=10 \
--ycsb_hot_tx_percent=0.9 \
--coro_scheduler=2 \
--coro_batch_size=8 \
--coro_cold_queue_size=16 \
--coro_check_cold_tx_interval=8 \
--seconds=10 \
--threads=10 
+### Running with Docker
+It is tested on the docker container of Ubuntu 22.04 with Linux kernel >= 5.10.
+We assume that the host OS has UPMEM SDK 2025.1.0 installed.
+```shell
+mv scripts/env/Dockerfile.upmem scripts/env/Dockerfile
+sudo docker build -t oltpim scripts/env/
 ```
 
-Example for sequential:
+You should run the docker container with proper arguments to allow UPMEM access.
+Consult UPMEM for the latest required docker arguments.
+```shell
+DPU_RANKS=$(find /dev/ -type c -name 'dpu_rank*')
+RANK_DEVICES=$(for rank in $DPU_RANKS; do echo -n " --device=$rank"; done)
+
+DPU_DAX=$(find /dev/ -type c -name 'dax*.*')
+DAX_DEVICES=$(for dax in $DPU_DAX; do echo -n " --device=$dax"; done)
+
+SYS_DPU_VOLUME=" -v /sys/module/dpu:/sys/module/dpu:rw"
+
+DPU_REGIONS=$(find /sys/devices/platform -type d -name 'dpu_region_mem.*')
+REGION_VOLUMES=$(for region in $DPU_REGIONS; do echo -n " -v $region:$region:rw"; done)
+
+sudo docker run --rm -it --privileged -v $PWD:/oltpim -w /oltpim \
+    $RANK_DEVICES $DAX_DEVICES $SYS_DPU_VOLUME $REGION_VOLUMES \
+    oltpim /bin/bash 
 ```
-$ ./ycsb_SI_sequential \
--log_data_dir=/mnt/nvme0n1/mosaicdb-log \
--node_memory_gb=50 \
--ycsb_workload=C \
--ycsb_read_tx_type=sequential \
--ycsb_hot_table_size=300000000 \
--ycsb_cold_table_size=3000000 \
--ycsb_ops_per_tx=10 \
--ycsb_cold_ops_per_tx=2 \
--ycsb_ops_per_hot_tx=10 \
--ycsb_hot_tx_percent=0.9 \
--seconds=10 \
--threads=10
+
+### Ubuntu 22.04, without UPMEM
+You can directly run the non-UPMEM version (the baseline) on Ubuntu 22.04.
+You should install Linux perf manually, if not already installed.
+```shell
+sudo bash scripts/env/setup-cpuonly.sh
+```
+
+Or, you can use the `scripts/env/Dockerfile.cpu` to create the docker container for non-UPMEM version.
+
+## Compile
+
+You can build the project in either release or debug mode.
+
+```shell
+mkdir build
+cd build
+cmake -DCMAKE_BUILD_TYPE=Release .. # Release mode
+cmake -DCMAKE_BUILD_TYPE=Debug .. # Debug mode
+make -j`nproc`
+cd ..
+```
+
+You can build the project for no-UPMEM version, without UPMEM SDK installed.
+
+```shell
+cmake -DCMAKE_BUILD_TYPE=Release -DNO_UPMEM=1 .. # Release mode
+cmake -DCMAKE_BUILD_TYPE=Debug -DNO_UPMEM=1 .. # Debug mode
+```
+
+## Running Experiments
+
+Run following commands to reproduce the plots. They require sudo privilege.
+
+When measuring memory traffic using perf, this project uses hard-coded separation
+between DRAM and PIM traffics: we assume DRAMs occupy channels {0, 3} and PIM occupy channels {1, 2, 4, 5}.
+If your server has different channel configuration, you should modify the perf-launching code in `benchmarks/bench.cc`.
+
+Also, the launch parameters are hand-optimized to the machine with at least 64 (hyperthreaded) cores and 256GB memory.
+
+```shell
+mkdir results/
+NUM_UPMEM_RANKS=32 # the number of UPMEM ranks in your system.
+python3 scripts/exp1-batchsize.py --result-dir results/ \
+    --num-upmem-ranks $NUM_UPMEM_RANKS --systems both --measure-on-upmem-server
+python3 scripts/exp2-ycsb.py --result-dir results/ \
+    --num-upmem-ranks $NUM_UPMEM_RANKS --systems both --measure-on-upmem-server
+python3 scripts/exp3-breakdown.py --result-dir results/ \
+    --num-upmem-ranks $NUM_UPMEM_RANKS --systems both --measure-on-upmem-server
+python3 scripts/exp4-tpcc.py --result-dir results/ \
+    --num-upmem-ranks $NUM_UPMEM_RANKS --systems both --measure-on-upmem-server
+```
+
+They will make CSV files in the `results/` directory.
+
+### Running non-UPMEM version in other server
+
+To measure OLTPim and MosaicDB in different servers, run the above commands with `--systems OLTPim`.
+Then, from the other server without UPMEM, run:
+
+```shell
+mkdir results/
+python3 scripts/exp1-batchsize.py --result-dir results/ --systems MosaicDB
+python3 scripts/exp2-ycsb.py --result-dir results/ --systems MosaicDB
+python3 scripts/exp3-breakdown.py --result-dir results/ --systems MosaicDB
+python3 scripts/exp4-tpcc.py --result-dir results/ --systems MosaicDB
+```
+
+### Drawing Plots
+
+After collecting the CSV files in the `results/` directory in the same machine, run:
+
+```shell
+mkdir results/
+python3 scripts/expz-plotall.py --result-dir results/
 ```

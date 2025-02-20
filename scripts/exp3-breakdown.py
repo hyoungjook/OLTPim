@@ -2,15 +2,12 @@ from common import *
 
 EXP_NAME = 'breakdown'
 WORKLOADS = ['YCSB-B']
-WORKLOAD_SIZES = [10 ** 8]
+WORKLOAD_SIZES = [10 ** 9]
 # (system, no_numa_local, no_interleave, suffix)
 BREAKDOWNS = [
     (MOSAICDB, True, False, None),
     (MOSAICDB, False, False, None),
     (OLTPIM, True, True, '_indexonly_nodirect'),
-    (OLTPIM, True, True, '_indexonly'),
-    (OLTPIM, True, False, '_indexonly'),
-    (OLTPIM, False, False, '_indexonly'),
     (OLTPIM, True, True, '_nodirect'),
     (OLTPIM, True, True, None),
     (OLTPIM, True, False, None),
