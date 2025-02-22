@@ -53,7 +53,7 @@ def plot_intro(args):
         indices = range(len(LABELS))
         axis.bar([x - width/2 for x in indices], stats_1B[yname][MOSAICDB], width, color='white', edgecolor='black', hatch='\\\\', label=MOSAICDB)
         axis.bar([x + width/2 for x in indices], stats_1B[yname][OLTPIM], width, color='white', edgecolor='red', hatch='//', label=OLTPIM)
-        speedups = [f'{o/m:.2f}x' for m, o in zip(stats_1B[yname][MOSAICDB], stats_1B[yname][OLTPIM])]
+        speedups = [f'{max(m,o)/min(m,o):.2f}x' for m, o in zip(stats_1B[yname][MOSAICDB], stats_1B[yname][OLTPIM])]
         maxs = [max(m, o) for m, o in zip(stats_1B[yname][MOSAICDB], stats_1B[yname][OLTPIM])]
         rects = axis.bar(indices, maxs, alpha=0)
         axis.bar_label(rects, labels=speedups, padding=3)
@@ -66,8 +66,8 @@ def plot_intro(args):
         axis.yaxis.set_major_formatter(formatter)
         axis.minorticks_off()
         axis.set_xlim(-0.5, len(indices) - 0.5)
-    simple_bar(axes[0], 'tput', 'Throughput (MTPS)')
-    simple_bar(axes[1], 'totalbw', 'Memory Traffic (KBPT)')
+    simple_bar(axes[0], 'tput', 'Throughput\n  (MTPS) $\\bf{→}$')
+    simple_bar(axes[1], 'totalbw', 'Memory Traffic\n$\\bf{←}$ (KBPT)  ')
     fig.supxlabel('Workload Read/Update Ratio')
     legh, legl = axes[0].get_legend_handles_labels()
     fig.legend(legh, legl, ncol=2, loc='lower center', bbox_to_anchor=(0.5, 1))
@@ -248,12 +248,12 @@ def plot_overall(args):
         axis.grid(axis='y', color='lightgrey', linestyle='--')
         axis.set_axisbelow(True)
     tput_plot(axes[0][0], ycsbc, x_indices, size_labels, 'YCSB-C')
-    tput_plot(axes[0][1], ycsbs, x_indices, ycsbs_labels, 'YCSB-S')
-    tput_plot(axes[0][2], ycsbb, x_indices, size_labels, 'YCSB-B')
-    tput_plot(axes[0][3], ycsba, x_indices, size_labels, 'YCSB-A')
+    tput_plot(axes[0][1], ycsbb, x_indices, size_labels, 'YCSB-B')
+    tput_plot(axes[0][2], ycsba, x_indices, size_labels, 'YCSB-A')
+    tput_plot(axes[0][3], ycsbs, x_indices, ycsbs_labels, 'YCSB-S')
     tput_plot(axes[0][4], ycsbi, x_indices, ycsbi_labels, 'YCSB-I')
     tput_plot(axes[0][5], tpcc, x_indices, tpcc_labels, 'TPC-C', top_ylim=False)
-    axes[0][0].set_ylabel('Throughput\n(MTPS)')
+    axes[0][0].set_ylabel('Throughput\n  (MTPS) $\\bf{→}$')
     axes[0][1].set_yticklabels('')
     axes[0][2].set_yticklabels('')
     axes[0][3].set_yticklabels('')
@@ -271,17 +271,19 @@ def plot_overall(args):
         indices1 = [x - width/2 for x in indices]
         indices2 = [x + width/2 for x in indices]
         bottom = [0 for _ in indices]
-        axis.bar(indices1, workload['dramrd'][MOSAICDB], width, bottom=bottom, color='lightgreen', edgecolor='black')
+        axis.bar(indices1, workload['dramrd'][MOSAICDB], width, bottom=bottom, color='lightgreen')
         bottom = [b + n for b, n in zip(bottom, workload['dramrd'][MOSAICDB])]
-        axis.bar(indices1, workload['dramwr'][MOSAICDB], width, bottom=bottom, color='green', edgecolor='black')
+        axis.bar(indices1, workload['dramwr'][MOSAICDB], width, bottom=bottom, color='green')
         bottom = [0 for _ in indices]
-        axis.bar(indices2, workload['dramrd'][OLTPIM], width, bottom=bottom, color='lightgreen', edgecolor='red')
+        axis.bar(indices2, workload['dramrd'][OLTPIM], width, bottom=bottom, color='lightgreen')
         bottom = [b + n for b, n in zip(bottom, workload['dramrd'][OLTPIM])]
-        axis.bar(indices2, workload['dramwr'][OLTPIM], width, bottom=bottom, color='green', edgecolor='red')
+        axis.bar(indices2, workload['dramwr'][OLTPIM], width, bottom=bottom, color='green')
         bottom = [b + n for b, n in zip(bottom, workload['dramwr'][OLTPIM])]
-        axis.bar(indices2, workload['pimrd'][OLTPIM], width, bottom=bottom, color='lightgrey', edgecolor='red')
+        axis.bar(indices2, workload['pimrd'][OLTPIM], width, bottom=bottom, color='peachpuff')
         bottom = [b + n for b, n in zip(bottom, workload['pimrd'][OLTPIM])]
-        axis.bar(indices2, workload['pimwr'][OLTPIM], width, bottom=bottom, color='grey', edgecolor='red')
+        axis.bar(indices2, workload['pimwr'][OLTPIM], width, bottom=bottom, color='darkorange')
+        axis.bar(indices1, workload['totalbw'][MOSAICDB], width, color='#ffffff00', edgecolor='black')
+        axis.bar(indices2, workload['totalbw'][OLTPIM], width, color='#ffffff00', edgecolor='red')
         axis.set_xticks(indices)
         axis.set_xticklabels(labels)
         axis.set_xlabel('')
@@ -293,16 +295,14 @@ def plot_overall(args):
         axis.grid(axis='y', color='lightgrey', linestyle='--')
         axis.set_axisbelow(True)
     dram_plot(axes[1][0], ycsbc, x_indices, size_labels)
-    dram_plot(axes[1][1], ycsbs, x_indices, ycsbs_labels)
-    dram_plot(axes[1][2], ycsbb, x_indices, size_labels)
-    dram_plot(axes[1][3], ycsba, x_indices, size_labels)
+    dram_plot(axes[1][1], ycsbb, x_indices, size_labels)
+    dram_plot(axes[1][2], ycsba, x_indices, size_labels)
+    dram_plot(axes[1][3], ycsbs, x_indices, ycsbs_labels)
     dram_plot(axes[1][4], ycsbi, x_indices, ycsbi_labels)
     dram_plot(axes[1][5], tpcc, x_indices, tpcc_labels, top_ylim=False)
-    axes[1][0].set_ylabel('Memory Traffic\n(KBPT)')
-    axes[1][0].set_xlabel('Table Size')
-    axes[1][1].set_xlabel('Max Scan Length')
-    axes[1][2].set_xlabel('Table Size')
-    axes[1][3].set_xlabel('Table Size')
+    axes[1][0].set_ylabel('Memory Traffic\n$\\bf{←}$ (KBPT)  ')
+    axes[1][1].set_xlabel('Table Size')
+    axes[1][3].set_xlabel('Max Scan Length')
     axes[1][4].set_xlabel('Insert Ratio')
     axes[1][5].set_xlabel('Writes:Reads Ratio')
     axes[1][1].set_yticklabels('')
@@ -320,7 +320,7 @@ def plot_overall(args):
             mpatch.Patch(facecolor='white', edgecolor='red')
         ),
         mpatch.Patch(color='lightgreen'), mpatch.Patch(color='green'),
-        mpatch.Patch(color='lightgrey'), mpatch.Patch(color='grey'),
+        mpatch.Patch(color='peachpuff'), mpatch.Patch(color='darkorange'),
     ]
     legl = [
         MOSAICDB, OLTPIM, 'DRAM.Rd', 'DRAM.Wr', 'PIM.Rd', 'PIM.Wr',
@@ -388,8 +388,8 @@ def plot_gc(args):
     def gc_nogc_plot(axis, workload, xlabels, yname):
         axis.plot(x_indices, workload[True][yname][MOSAICDB], color='black', linestyle='-', marker='o', label=MOSAICDB)
         axis.plot(x_indices, workload[True][yname][OLTPIM], color='red', linestyle='-', marker='o', label=OLTPIM)
-        axis.plot(x_indices, workload[False][yname][MOSAICDB], color='grey', linestyle='--', marker='*', label=MOSAICDB + ' (no GC)')
-        axis.plot(x_indices, workload[False][yname][OLTPIM], color='pink', linestyle='--', marker='*', label=OLTPIM + ' (no GC)')
+        axis.plot(x_indices, workload[False][yname][MOSAICDB], color='grey', linestyle='--', marker='^', label=MOSAICDB + ' (no GC)')
+        axis.plot(x_indices, workload[False][yname][OLTPIM], color='pink', linestyle='--', marker='^', label=OLTPIM + ' (no GC)')
         axis.set_xticks(x_indices)
         axis.set_xticklabels(xlabels)
         axis.set_xlabel('')
@@ -400,7 +400,7 @@ def plot_gc(args):
         axis.grid(axis='y', color='lightgrey', linestyle='--')
         axis.set_axisbelow(True)
     gc_nogc_plot(axes[0], ycsba, x_labels, 'tput')
-    axes[0].set_ylabel('Throughput (MTPS)')
+    axes[0].set_ylabel('Throughput\n  (MTPS) $\\bf{→}$')
 
     slowdown_gen = lambda workload, system: \
         [nogc / gc for gc, nogc in zip(workload[True]['tput'][system], workload[False]['tput'][system])]
@@ -418,11 +418,17 @@ def plot_gc(args):
         axis.grid(axis='y', color='lightgrey', linestyle='--')
         axis.set_axisbelow(True)
     slowdown_plot(axes[1], ycsba, x_labels)
-    axes[1].set_ylabel('GC Slowdown')
+    axes[1].set_ylabel('$\\bf{←}$ GC Slowdown  ')
     fig.supxlabel('Table Size')
     legh0, legl0 = axes[0].get_legend_handles_labels()
     legh1, legl1 = axes[1].get_legend_handles_labels()
-    fig.legend(legh0 + legh1, legl0 + legl1, ncol=3, loc='lower center', bbox_to_anchor=(0.5, 1))
+    legh = [
+        (legh0[0], legh1[0]),
+        (legh0[1], legh1[1]),
+        legh0[2], legh0[3]
+    ]
+    fig.legend(legh, legl0, ncol=2, loc='lower center', bbox_to_anchor=(0.5, 1),
+        handler_map={tuple: mlegh.HandlerTuple(ndivide=None)})
     plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')
     plt.close(fig)
 
@@ -517,21 +523,43 @@ def plot_logging(args):
                 ycsbu[logging]['ratio'].append(1.0)
                 append_to_stats(ycsbu[logging], row)
 
-    fig, axes = plt.subplots(2, 2, figsize=(5, 3), constrained_layout=True)
+    fig, axes = plt.subplots(3, 2, figsize=(5, 4), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
     x_indices = range(len(ycsbi[True]['ratio']))
     labels = [RATIO_TO_LABEL[ycsbi[True]['ratio'][x]] for x in x_indices]
+
+    tput_ylim = max(
+        ycsbi[True]['tput'] + ycsbi[False]['tput'] +
+        ycsbu[True]['tput'] + ycsbu[False]['tput']
+    )
+    def tput_plot(axis, workload, indices, title):
+        axis.plot(indices, workload[True]['tput'], color='red', linestyle='-', marker='o')
+        axis.plot(indices, workload[False]['tput'], color='pink', linestyle='--', marker='^')
+        axis.set_xticks(indices)
+        axis.set_xticklabels('')
+        axis.set_xlabel('')
+        axis.yaxis.set_major_formatter(formatter)
+        axis.minorticks_off()
+        axis.set_xlim(-0.5, len(indices) - 0.5)
+        axis.set_ylim(bottom=0, top=tput_ylim * 1.1)
+        axis.title.set_text(title)
+        axis.grid(axis='y', color='lightgrey', linestyle='--')
+        axis.set_axisbelow(True)
+    tput_plot(axes[0][0], ycsbi, x_indices, 'YCSB-I')
+    tput_plot(axes[0][1], ycsbu, x_indices, 'YCSB-U')
+    axes[0][0].set_ylabel('Throughput\n  (MTPS) $\\bf{→}$')
+    axes[0][1].set_yticklabels('')
 
     p99_ylim = max(
         ycsbi[True]['p99'] + ycsbi[False]['p99'] +
         ycsbu[True]['p99'] + ycsbu[False]['p99']
     )
-    def p99_plot(axis, workload, indices, title):
+    def p99_plot(axis, workload, indices):
         width = 0.3
         indices1 = [x - width/2 for x in indices]
         indices2 = [x + width/2 for x in indices]
         axis.bar(indices1, workload[True]['p99'], width, color='white', edgecolor='red', hatch='//')
-        axis.bar(indices2, workload[False]['p99'], width, color='white', edgecolor='pink', hatch='xx')
+        axis.bar(indices2, workload[False]['p99'], width, color='white', edgecolor='pink', hatch='////')
         axis.set_xticks(indices)
         axis.set_xticklabels('')
         axis.set_xlabel('')
@@ -539,13 +567,12 @@ def plot_logging(args):
         axis.minorticks_off()
         axis.set_xlim(-0.5, len(indices) - 0.5)
         axis.set_ylim(bottom=0, top=p99_ylim * 1.1)
-        axis.title.set_text(title)
         axis.grid(axis='y', color='lightgrey', linestyle='--')
         axis.set_axisbelow(True)
-    p99_plot(axes[0][0], ycsbi, x_indices, 'YCSB-I')
-    p99_plot(axes[0][1], ycsbu, x_indices, 'YCSB-U')
-    axes[0][0].set_ylabel('P99 Latency\n(ms)')
-    axes[0][1].set_yticklabels('')
+    p99_plot(axes[1][0], ycsbi, x_indices)
+    p99_plot(axes[1][1], ycsbu, x_indices)
+    axes[1][0].set_ylabel('P99 Latency\n$\\bf{←}$ (ms)  ')
+    axes[1][1].set_yticklabels('')
 
     dram_ylim = max(
         ycsbi[True]['totalbw'] + ycsbi[False]['totalbw'] +
@@ -556,21 +583,23 @@ def plot_logging(args):
         indices1 = [x - width/2 for x in indices]
         indices2 = [x + width/2 for x in indices]
         bottom = [0 for _ in indices]
-        axis.bar(indices1, workload[True]['dramrd'], width, bottom=bottom, color='lightgreen', edgecolor='red')
+        axis.bar(indices1, workload[True]['dramrd'], width, bottom=bottom, color='lightgreen')
         bottom = [b + n for b, n in zip(bottom, workload[True]['dramrd'])]
-        axis.bar(indices1, workload[True]['dramwr'], width, bottom=bottom, color='green', edgecolor='red')
+        axis.bar(indices1, workload[True]['dramwr'], width, bottom=bottom, color='green')
         bottom = [b + n for b, n in zip(bottom, workload[True]['dramwr'])]
-        axis.bar(indices1, workload[True]['pimrd'], width, bottom=bottom, color='lightgrey', edgecolor='red')
+        axis.bar(indices1, workload[True]['pimrd'], width, bottom=bottom, color='peachpuff')
         bottom = [b + n for b, n in zip(bottom, workload[True]['pimrd'])]
-        axis.bar(indices1, workload[True]['pimwr'], width, bottom=bottom, color='grey', edgecolor='red')
+        axis.bar(indices1, workload[True]['pimwr'], width, bottom=bottom, color='darkorange')
         bottom = [0 for _ in indices]
-        axis.bar(indices2, workload[False]['dramrd'], width, bottom=bottom, color='lightgreen', edgecolor='pink')
+        axis.bar(indices2, workload[False]['dramrd'], width, bottom=bottom, color='lightgreen')
         bottom = [b + n for b, n in zip(bottom, workload[False]['dramrd'])]
-        axis.bar(indices2, workload[False]['dramwr'], width, bottom=bottom, color='green', edgecolor='pink')
+        axis.bar(indices2, workload[False]['dramwr'], width, bottom=bottom, color='green')
         bottom = [b + n for b, n in zip(bottom, workload[False]['dramwr'])]
-        axis.bar(indices2, workload[False]['pimrd'], width, bottom=bottom, color='lightgrey', edgecolor='pink')
+        axis.bar(indices2, workload[False]['pimrd'], width, bottom=bottom, color='peachpuff')
         bottom = [b + n for b, n in zip(bottom, workload[False]['pimrd'])]
-        axis.bar(indices2, workload[False]['pimwr'], width, bottom=bottom, color='grey', edgecolor='pink')
+        axis.bar(indices2, workload[False]['pimwr'], width, bottom=bottom, color='darkorange')
+        axis.bar(indices1, workload[True]['totalbw'], width, color='#ffffff00', edgecolor='red')
+        axis.bar(indices2, workload[False]['totalbw'], width, color='#ffffff00', edgecolor='pink')
         axis.set_xticks(indices)
         axis.set_xticklabels(labels)
         axis.set_xlabel('')
@@ -580,23 +609,30 @@ def plot_logging(args):
         axis.set_ylim(bottom=0, top=dram_ylim * 1.1)
         axis.grid(axis='y', color='lightgrey', linestyle='--')
         axis.set_axisbelow(True)
-    dram_plot(axes[1][0], ycsbi, x_indices, labels)
-    dram_plot(axes[1][1], ycsbu, x_indices, labels)
-    axes[1][0].set_ylabel('Memory Traffic\n(KBPT)')
-    axes[1][0].set_xlabel('Insert Ratio')
-    axes[1][1].set_xlabel('Update Ratio')
-    axes[1][1].set_yticklabels('')
+    dram_plot(axes[2][0], ycsbi, x_indices, labels)
+    dram_plot(axes[2][1], ycsbu, x_indices, labels)
+    axes[2][0].set_ylabel('Memory Traffic\n$\\bf{←}$ (KBPT)  ')
+    axes[2][0].set_xlabel('Insert Ratio')
+    axes[2][1].set_xlabel('Update Ratio')
+    axes[2][1].set_yticklabels('')
 
     legh = [
-        mpatch.Patch(facecolor='white', edgecolor='red', hatch='//'),
-        mpatch.Patch(facecolor='white', edgecolor='pink', hatch='xx'),
+        (
+            mline.Line2D([0], [0], color='red', linestyle='-', marker='o'),
+            mpatch.Patch(facecolor='white', edgecolor='red', hatch='//')
+        ),
+        (
+            mline.Line2D([0], [0], color='pink', linestyle='--', marker='^'),
+            mpatch.Patch(facecolor='white', edgecolor='pink', hatch='////')
+        ),
         mpatch.Patch(color='lightgreen'), mpatch.Patch(color='green'),
-        mpatch.Patch(color='lightgrey'), mpatch.Patch(color='grey'),
+        mpatch.Patch(color='peachpuff'), mpatch.Patch(color='darkorange'),
     ]
     legl = [
         OLTPIM, OLTPIM + ' (no log)', 'DRAM.Rd', 'DRAM.Wr', 'PIM.Rd', 'PIM.Wr',
     ]
-    fig.legend(legh, legl, ncol=3, loc='lower center', bbox_to_anchor=(0.5, 1))
+    fig.legend(legh, legl, ncol=3, loc='lower center', bbox_to_anchor=(0.5, 1),
+        handler_map={tuple: mlegh.HandlerTuple(ndivide=None)})
     plt.savefig(result_plot_path(args, PLOT_NAME), bbox_inches='tight')
     plt.close(fig)
 
@@ -654,9 +690,9 @@ def plot_skew(args):
         axis.grid(axis='y', color='lightgrey', linestyle='--')
         axis.set_axisbelow(True)
     simple_plot(axes[0], ycsbb, 'tput')
-    axes[0].set_ylabel('Throughput (MTPS)')
+    axes[0].set_ylabel('Throughput\n  (MTPS) $\\bf{→}$')
     simple_plot(axes[1], ycsbb, 'totalbw')
-    axes[1].set_ylabel('Memory Traffic (KBPT)')
+    axes[1].set_ylabel('Memory Traffic\n$\\bf{←}$ (KBPT)  ')
     fig.supxlabel('Workload Skewness (θ)')
     legh, legl = axes[0].get_legend_handles_labels()
     fig.legend(legh, legl, ncol=2, loc='lower center', bbox_to_anchor=(0.5, 1))
@@ -714,7 +750,7 @@ def plot_batchsize(args):
             if b == bs:
                 return y
         assert False
-    def simple_plot(axis, yname, ylabel, ylog, latency_set_yticks=False):
+    def simple_plot(axis, yname, ylabel, ylog, yticks=None):
         axis.plot(stats['batchsize'][MOSAICDB], stats[yname][MOSAICDB], linestyle='-', marker='o', color='black', label=MOSAICDB)
         axis.plot(stats['batchsize'][OLTPIM_NOMULTIGET], stats[yname][OLTPIM_NOMULTIGET], linestyle='--', marker='o', color='pink', label=OLTPIM_NOMULTIGET)
         axis.plot(stats['batchsize'][OLTPIM], stats[yname][OLTPIM], linestyle='-', marker='o', color='red', label=OLTPIM)
@@ -728,22 +764,20 @@ def plot_batchsize(args):
         if ylog: axis.set_yscale('log')
         else: axis.set_ylim(bottom=0)
         axis.set_xticks([1, 10, 100, 1000])
-        if latency_set_yticks:
-            axis.set_yticks([0.1, 1, 10, 100])
+        if yticks: axis.set_yticks(yticks)
         axis.xaxis.set_major_formatter(formatter)
         axis.yaxis.set_major_formatter(formatter)
         axis.set_xlim(1, 2000)
         axis.minorticks_off()
         axis.grid(axis='y', color='lightgrey', linestyle='--')
         axis.set_axisbelow(True)
-    simple_plot(axes[0][0], 'tput', 'Throughput\n(MTPS)', False)
-    simple_plot(axes[0][1], 'p99', 'P99 Latency (ms)', True, True)
-    simple_plot(axes[1][0], 'totalbw', 'Memory Traffic\n(KBPT)', False)
-    simple_plot(axes[1][1], 'abort', 'Abort Rate (%)', True)
+    simple_plot(axes[0][0], 'tput', 'Throughput\n  (MTPS) $\\bf{→}$', False, [0, 5, 10])
+    simple_plot(axes[0][1], 'p99', 'P99 Latency\n$\\bf{←}$ (ms)  ', True, [0.1, 1, 10, 100])
+    simple_plot(axes[1][0], 'totalbw', 'Memory Traffic\n$\\bf{←}$ (KBPT)  ', True)
+    simple_plot(axes[1][1], 'abort', 'Abort Rate\n$\\bf{←}$ (%)  ', True)
     axes[0][0].set_xticklabels('')
     axes[0][1].set_xticklabels('')
-    bw_max = max(stats['totalbw'][MOSAICDB] + stats['totalbw'][OLTPIM])
-    axes[1][0].set_ylim(top=bw_max * 1.2)
+    axes[1][0].set_ylim(bottom=1)
     axes[1][1].yaxis.set_major_formatter(LogFormatterSciNotation())
     legh, legl = axes[0][0].get_legend_handles_labels()
     fig.supxlabel('Coroutine Batchsize per Thread')
@@ -785,7 +819,7 @@ def plot_breakdown(args):
         for row in reader:
             append_to_stats(OLTPIM, row)
 
-    fig, axes = plt.subplots(1, 1, figsize=(5, 2), constrained_layout=True)
+    fig, axes = plt.subplots(1, 1, figsize=(5, 1.5), constrained_layout=True)
     formatter = FuncFormatter(lambda x, _: f'{x:g}')
     
     #X_LABELS = [
@@ -797,7 +831,7 @@ def plot_breakdown(args):
     #    MOSAICDB,
     #    OLTPIM,
     #]
-    X_LABELS = ['(A)', '(B)', '(C)', '(D)', '(E)', '(AN)', '(EN)']
+    X_LABELS = ['(M)', '(O-3)', '(O-2)', '(O-1)', '(O)', '(MN)', '(ON)']
     x_indices = range(len(X_LABELS))
     x_labels = X_LABELS
 
@@ -830,7 +864,7 @@ def plot_breakdown(args):
         axis.axvline(4.5, color='black', linestyle='--', linewidth=1)
         axis.grid(axis='y', color='lightgrey', linestyle='--')
         axis.set_axisbelow(True)
-    draw_bar(axes, stats['tput'][MOSAICDB], stats['tput'][OLTPIM], 'Throughput\n(MTPS)', True)
+    draw_bar(axes, stats['tput'][MOSAICDB], stats['tput'][OLTPIM], 'Throughput\n  (MTPS) $\\bf{→}$', True)
     #draw_bar(axes[1], stats['totalbw'][MOSAICDB], stats['totalbw'][OLTPIM], 'Memory Traffic\n(KBPT)', False, True)
     axes.set_xticklabels(x_labels)
     #axes.set_xticks([5.5], minor=True)
