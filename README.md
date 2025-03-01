@@ -118,3 +118,21 @@ After collecting the CSV files in the `results/` directory in the same machine, 
 ```shell
 python3 scripts/expz-plotall.py --result-dir results/
 ```
+
+## Common UPMEM Errors
+
+### Timeout waiting for result to be correct
+
+This error is reproducible with any UPMEM application even using the default UPMEM SDK.
+Try rebooting the server. If the issue persists, consult UPMEM.
+
+### Not enough ranks allocated
+
+If enough UPMEM DIMMs installed in the system but rank allocation is failed, run `dpu-diag` to see the status of UPMEM DPUs.
+If running inside docker, try exiting and launching a new container.
+
+### Infinite loop, experiment not ends forever
+
+Try the problematic command with an executable compile with `-DCMAKE_BUILD_TYPE=Debug` and see whether it emits any error message.
+It's likely due to the PIM code fault (likely because of PIM-side out-of-memory).
+Try again with a smaller table or shorter runtime.
