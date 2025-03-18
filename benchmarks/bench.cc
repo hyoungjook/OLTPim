@@ -513,7 +513,7 @@ void bench_runner::start_measurement() {
 
   double dram_rd_mib, dram_wr_mib;
   double pim_rd_mib, pim_wr_mib;
-  double pim_util, pim_mram_ratio, pim_mram_avg_size;
+  //double pim_util, pim_mram_ratio, pim_mram_avg_size;
   if (ermia::config::measure_energy) {
     FILE *outf;
     char *tok_buf;
@@ -569,13 +569,6 @@ void bench_runner::start_measurement() {
       fprintf(stderr, "WARNING: %s:%d perf memory bandwidth unit mismatch.\n", __FILE__, __LINE__);
     }
 
-    // UPMEM near-memory bandwidth
-#if defined(OLTPIM)
-    pim_util = 0, pim_mram_ratio = 0, pim_mram_avg_size = 0;
-    double wram_ratio = 0;
-    oltpim::engine::g_engine.compute_dpu_stats(elapsed_sec,
-      pim_util, wram_ratio, pim_mram_ratio, pim_mram_avg_size);
-#endif
   }
 
   //if (ermia::config::enable_chkpt) {
@@ -621,12 +614,26 @@ void bench_runner::start_measurement() {
           << dram_rd_mib << " dram.rd(MiB), "
           << dram_wr_mib << " dram.wr(MiB), ";
     std::cout << pim_rd_mib << " pim.rd(MiB), "
-          << pim_wr_mib << " pim.wr(MiB), "
-          << pim_util << " pim-util, "
-          << pim_mram_ratio << " pim-mram-ratio, "
-          << pim_mram_avg_size << " pim-mram-size(B), ";
+          << pim_wr_mib << " pim.wr(MiB), ";
+    //std::cout << pim_util << " pim-util, "
+    //      << pim_mram_ratio << " pim-mram-ratio, "
+    //      << pim_mram_avg_size << " pim-mram-size(B), ";
   }
   std::cout << std::endl;
+#if defined(OLTPIM)
+#ifdef MEASURE_PIM_STATS
+  std::cout << "---------------------------------------\n";
+  {
+    auto pim_engine_stats = oltpim::engine::g_engine.get_pim_stats();
+    std::cout << "OLTPim engine stats: "
+          << pim_engine_stats.avg_pim_running_time << " avg_pim_run(s), "
+          << pim_engine_stats.avg_mux_switch_time << " avg_mux_sw(s), "
+          << pim_engine_stats.avg_num_rounds << " avg_rounds, "
+          << pim_engine_stats.avg_requests_per_round << " avg_batchsize(reqs), ";
+    std::cout << std::endl;
+  }
+#endif
+#endif
   std::cout << "---------------------------------------\n";
   std::cout << agg_abort_rate << " total_aborts/s, " << agg_system_abort_rate
        << " system_aborts/s, " << agg_user_abort_rate << " user_aborts/s, "
