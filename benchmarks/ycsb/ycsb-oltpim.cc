@@ -310,7 +310,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
     rc_t rc;
     ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
     for (int j = 0; j < FLAGS_ycsb_ops_per_hot_tx; ++j) {
-      rc = co_await table_index->pim_GetRecordEnd(txn, v, &reqs[j]);
+      rc = co_await table_index->pim_GetRecordEnd(txn, v, &reqs[j], &_oltpim_idle_wait);
       // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
       memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
@@ -412,7 +412,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
       // Txn should wait until all requests are done
       // because the engine is using the reqs stack variable
       // and it is released if this function returns.
-      rc_t _rc = co_await table_index->pim_UpdateRecordEnd(txn, &reqs[j]);
+      rc_t _rc = co_await table_index->pim_UpdateRecordEnd(txn, &reqs[j], &_oltpim_idle_wait);
       if (_rc._val != RC_TRUE) rc = _rc;
     }
     TryCatchOltpim(rc);
@@ -468,6 +468,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
 
  private:
   uint32_t _coro_batch_size;
+  bool _oltpim_idle_wait;
 
   /**
    * This scheduler processes transactions in a batch fashion.
@@ -569,6 +570,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
 
     barrier_a->count_down();
     barrier_b->wait_for();
+    uint64_t t0 = (uint64_t)-1;
 
     ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
 
@@ -642,7 +644,9 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
             std::get<0>(task_queue[tid]).resume();
           }
         } else {
+          uint64_t t0 = oltpim::cur_us();
           std::get<0>(task_queue[i]).resume();
+          if (_oltpim_idle_wait) oltpim_cpu_idle_time_us += (oltpim::cur_us() - t0);
         }
       }
 

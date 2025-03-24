@@ -218,6 +218,7 @@ class bench_worker : public ermia::thread::Runner {
 
  public:
   ermia::histogram_counter latency_hist_us;
+  uint64_t oltpim_cpu_idle_time_us = 0;
 
  protected:
   std::vector<tx_stat> txn_counts;  // commits and aborts breakdown

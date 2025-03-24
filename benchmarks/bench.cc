@@ -445,6 +445,7 @@ void bench_runner::start_measurement() {
   size_t n_query_commits = 0;
   uint64_t latency_numer_us = 0;
   ermia::histogram_counter latency_hist_us;
+  uint64_t oltpim_cpu_idle_time_us = 0;
   for (size_t i = 0; i < ermia::config::worker_threads; i++) {
     n_commits += workers[i]->get_ntxn_commits();
     n_aborts += workers[i]->get_ntxn_aborts();
@@ -462,6 +463,7 @@ void bench_runner::start_measurement() {
       latency_numer_us += workers[i]->get_latency_numer_us();
       latency_hist_us += workers[i]->latency_hist_us;
     }
+    oltpim_cpu_idle_time_us += workers[i]->oltpim_cpu_idle_time_us;
   }
 
   const unsigned long elapsed = t.lap();
@@ -510,6 +512,9 @@ void bench_runner::start_measurement() {
       std::get<3>(agg_txn_counts[t.first]) += std::get<3>(t.second);
     }
   }
+
+  const double avg_oltpim_cpu_idle_time = 
+    double(oltpim_cpu_idle_time_us) / double(workers.size()) / 1000000.0;
 
   double dram_rd_mib, dram_wr_mib;
   double pim_rd_mib, pim_wr_mib;
@@ -629,7 +634,8 @@ void bench_runner::start_measurement() {
           << pim_engine_stats.avg_pim_running_time << " avg_pim_run(s), "
           << pim_engine_stats.avg_mux_switch_time << " avg_mux_sw(s), "
           << pim_engine_stats.avg_num_rounds << " avg_rounds, "
-          << pim_engine_stats.avg_requests_per_round << " avg_batchsize(reqs), ";
+          << pim_engine_stats.avg_requests_per_round << " avg_batchsize(reqs), "
+          << avg_oltpim_cpu_idle_time << " avg_cpu_idle_time(s), ";
     std::cout << std::endl;
   }
 #endif

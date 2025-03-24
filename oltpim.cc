@@ -91,11 +91,16 @@ ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t key, 
 }
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *req_) {
+ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *req_, bool *idlewait) {
   auto *req = (oltpim::request_get*)req_;
+  bool coro_started = false;
+  if (idlewait) *idlewait = false;
   while (!oltpim::engine::g_engine.is_done(req)) {
+    if (idlewait && coro_started) *idlewait = true;
     co_await std::suspend_always{};
+    coro_started = true;
   }
+  if (idlewait) *idlewait = false;
   auto &rets = req->rets;
   auto status = REQ_GET_STATUS(rets.value_status);
   CHECK_VALID_STATUS(status);
@@ -277,11 +282,16 @@ ConcurrentMasstreeIndex::pim_UpdateRecordBegin(transaction *t, const uint64_t ke
 }
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_) {
+ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_, bool *idlewait) {
   auto *req = (oltpim::request_update*)req_;
+  bool coro_started = false;
+  if (idlewait) *idlewait = false;
   while (!oltpim::engine::g_engine.is_done(req)) {
+    if (idlewait && coro_started) *idlewait = true;
     co_await std::suspend_always{};
+    coro_started = true;
   }
+  if (idlewait) *idlewait = false;
   auto &rets = req->rets;
   auto status = rets.status;
   CHECK_VALID_STATUS(status);
@@ -502,7 +512,7 @@ ConcurrentMasstreeIndex::pim_GetRecordBegin(transaction *t, const uint64_t key, 
 }
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *req_) {
+ConcurrentMasstreeIndex::pim_GetRecordEnd(transaction *t, varstr &value, void *req_, bool *idlewait) {
   auto *req = (oltpim::request_getonly*)req_;
   while (!oltpim::engine::g_engine.is_done(req)) {
     co_await std::suspend_always{};
@@ -606,7 +616,7 @@ ConcurrentMasstreeIndex::pim_UpdateRecordBegin(transaction *t, const uint64_t ke
 }
 
 ermia::coro::task<rc_t>
-ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_) {
+ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_, bool *idlewait) {
   auto *req = (oltpim::request_getonly*)req_;
   while (!oltpim::engine::g_engine.is_done(req)) {
     co_await std::suspend_always{};
