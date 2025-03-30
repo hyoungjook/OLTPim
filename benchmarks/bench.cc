@@ -628,6 +628,8 @@ void bench_runner::start_measurement() {
     std::cout << "OLTPim engine stats: "
           << pim_engine_stats.avg_pim_running_time << " avg_pim_run(s), "
           << pim_engine_stats.avg_mux_switch_time << " avg_mux_sw(s), "
+          << pim_engine_stats.avg_req_process_time << " avg_req_proc(s), "
+          << pim_engine_stats.avg_req_copy_time << " avg_copy(s), "
           << pim_engine_stats.avg_num_rounds << " avg_rounds, "
           << pim_engine_stats.avg_requests_per_round << " avg_batchsize(reqs), ";
     std::cout << std::endl;
