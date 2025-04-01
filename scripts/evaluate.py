@@ -14,7 +14,7 @@ def parse_args(argv = sys.argv[1:]):
         help='Path of the program build directory.')
     parser.add_argument('--log-dir', type=str, default='/mnt/log',
         help='Path of the logging directory.')
-    parser.add_argument('--hugetlb-size-gb', type=int, default=160,
+    parser.add_argument('--hugetlb-size-gb', type=int, default=180,
         help='Size (GiB) of hugeTLB page to pre-allocate.')
     parser.add_argument('--log-limit-size-gb', type=int, default=8,
         help='Size (GiB) of log storage. Use 0 to disable log limiting.')

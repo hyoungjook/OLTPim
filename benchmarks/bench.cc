@@ -635,6 +635,10 @@ void bench_runner::start_measurement() {
     std::cout << std::endl;
   }
 #endif
+#ifdef SAMPLE_DPU_CORE_DUMP
+  std::cout << "---------------------------------------\n";
+  oltpim::engine::g_engine.print_sample_dpu_core_dump_info();
+#endif
 #endif
   std::cout << "---------------------------------------\n";
   std::cout << agg_abort_rate << " total_aborts/s, " << agg_system_abort_rate
