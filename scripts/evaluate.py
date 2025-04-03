@@ -312,7 +312,6 @@ def print_result(args, values):
         f"{values['time(s)']},{values['commits']},{values['aborts']},{values['p99(ms)']}," + \
         f"{values['dram.rd(MiB)']},{values['dram.wr(MiB)']}," + \
         f"{values['pim.rd(MiB)']},{values['pim.wr(MiB)']}," + \
-        f"{values['pim-util']},{values['pim-mram-ratio']},{values['pim-mram-size(B)']}" + \
         "\n"
     with open(args.result_file, 'a') as f:
         f.write(csv)
@@ -324,7 +323,6 @@ def print_header(result_file):
         'time(s),commits,aborts,p99(ms),' + \
         'dram.rd(MiB),dram.wr(MiB),' + \
         'pim.rd(MiB),pim.wr(MiB),' + \
-        'PIMUtil,PIMmramratio,PIMmramsize(B)' + \
         '\n'
     with open(result_file, 'w') as f:
         f.write(csv_header)
