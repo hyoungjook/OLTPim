@@ -18,29 +18,14 @@ uint32_t num_thread_pools = 0;
 
 std::vector<CPUCore> cpu_cores;
 bool DetectCPUCores() {
-  // FIXME(tzwang): Linux-specific way of querying NUMA topology
-  //
-  // We used to query /sys/devices/system/node/nodeX/cpulist to get a list of
-  // all cores for this node, but it could be a comma-separated list (x, y, z)
-  // or a range (x-y). So we just iterate each cpu dir here until dir not
-  // found.
-  struct stat info;
-  if (stat("/sys/devices/system/node", &info) != 0) {
-    return false;
-  }
-
   for (uint32_t node = 0; node < numa_max_node() + 1; ++node) {
     uint32_t cpu = 0;
     while (cpu < std::thread::hardware_concurrency()) {
-      std::string dir_name = "/sys/devices/system/node/node" +
-                              std::to_string(node) + "/cpu" + std::to_string(cpu);
-      struct stat info;
-      if (stat(dir_name.c_str(), &info) != 0) {
-        // Doesn't exist, continue to next to get all cores in the same node
+      if (numa_node_of_cpu(cpu) != node) {
+        // Continue to next to get all cores in the same node
         ++cpu;
         continue;
       }
-      ALWAYS_ASSERT(info.st_mode & S_IFDIR);
 
       // Make sure it's a physical thread, not a hyper-thread: Query
       // /sys/devices/system/cpu/cpuX/topology/thread_siblings_list, if the
@@ -58,6 +43,7 @@ bool DetectCPUCores() {
         memset(cpu_buf, 0, 8);
         sibling_file.getline(cpu_buf, 256, ',');
         threads.push_back(atoi(cpu_buf));
+        ALWAYS_ASSERT(numa_node_of_cpu(threads.back()) == node);
       }
 
       // A physical core?
