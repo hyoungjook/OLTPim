@@ -2,6 +2,7 @@
 #include <string>
 #include <fstream>
 #include <thread>
+#include <filesystem>
 #include <cstdlib>
 #include <cassert>
 #include <errno.h>
@@ -26,11 +27,18 @@ static const int _cpu_to_node_mapping[] = {
 };
 static_assert(sizeof(_cpu_to_node_mapping) == _num_cpus * sizeof(_cpu_to_node_mapping[0]));
 static int _node_to_real_node_mapping[_num_numa_nodes];
+static const int _num_pimranks = CONF_NUM_PIMRANKS;
+static const int _pimrank_to_node_mapping[] = {
+  CONF_PIMRANK_TO_NODE_MAPPING
+};
+static_assert(sizeof(_pimrank_to_node_mapping) == _num_pimranks * sizeof(_pimrank_to_node_mapping[0]));
+struct dpu_rank_t;
 
 #define API_BEGIN() if (!_initialized) _initialize()
 
 static bool _initialized = false;
 static void _initialize() {
+  // ======================= CPU core configuration =======================
   int cpu_counts[_num_numa_nodes] = {0,};
   int physical_cpu_counts[_num_numa_nodes] = {0,};
   int cpu_to_real_node[_num_cpus] = {-1,};
@@ -87,6 +95,42 @@ static void _initialize() {
         "All cpus in a node should actually be in the real numa node");
     }
   }
+
+  // ======================= PIM rank configuration =======================
+  const std::string pim_sysfs_path_prefix = "/sys/devices/platform/dpu_region_mem.";
+  // check if PIM exists in the system
+  if (std::filesystem::exists(pim_sysfs_path_prefix + "0")) {
+    int pimrank_to_real_node[_num_pimranks] = {-1,};
+    for (int rank = 0; rank < _num_pimranks; ++rank) {
+      ALWAYS_ASSERT(std::filesystem::exists(pim_sysfs_path_prefix + std::to_string(rank)),
+        "Unequal number of PIM ranks");
+      int rank_id = -1, numa_node = -1;
+      {
+        std::ifstream rank_id_stream(pim_sysfs_path_prefix + std::to_string(rank) +
+                                     "/dpu_rank/dpu_rank" + std::to_string(rank) + "/rank_id");
+        ALWAYS_ASSERT(rank_id_stream.good(), "system error");
+        rank_id_stream >> rank_id;
+      }
+      {
+        std::ifstream numa_node_stream(pim_sysfs_path_prefix + std::to_string(rank) +
+                                     "/dpu_dax/dax" + std::to_string(rank) + "." + std::to_string(rank) + "/numa_node");
+        ALWAYS_ASSERT(numa_node_stream.good(), "system error");
+        numa_node_stream >> numa_node;
+      }
+      pimrank_to_real_node[rank_id] = numa_node;
+    }
+    ALWAYS_ASSERT(!std::filesystem::exists(pim_sysfs_path_prefix + std::to_string(_num_pimranks)),
+      "Unequal number of PIM ranks");
+    // Check all PIM ranks in a virtual node are actually in the same real node
+    // and match with CPU's virtual -> real node mapping
+    for (int rank = 0; rank < _num_pimranks; ++rank) {
+      int virtual_node = _pimrank_to_node_mapping[rank];
+      int real_node = pimrank_to_real_node[rank];
+      ALWAYS_ASSERT(_node_to_real_node_mapping[virtual_node] == real_node,
+        "PIM rank mapping inconsistent with the CPU core mapping");
+    }
+  }
+
   _initialized = true;
 }
 
@@ -134,4 +178,19 @@ __API_FUNC__ int numa_run_on_node(int node) {
   using _func_type = int(*)(int);
   DEF_INIT_DLFCN_PTR(_func_type, real_func, "numa_run_on_node");
   return real_func(_node_to_real_node_mapping[node]);
+}
+
+__API_FUNC__ int dpu_get_rank_numa_node(dpu_rank_t *rank) {
+  //printf("dpu_get_rank_numa_node(%p)\n", rank);
+  // DPU_TARGET_MASK defined in api/include/lowlevel/dpu_target_macros.h
+  constexpr uint32_t DPU_TARGET_MASK = (1 << 12) - 1;
+  API_BEGIN();
+  using _func_type = uint32_t(*)(dpu_rank_t*);
+  DEF_INIT_DLFCN_PTR(_func_type, dpu_get_rank_id, "dpu_get_rank_id");
+  uint32_t rank_id = dpu_get_rank_id(rank) & DPU_TARGET_MASK;
+  if (rank_id >= _num_pimranks) {
+    fprintf(stderr, "dpu_get_rank_numa_node: Invalid rank_id %d\n", rank_id);
+    abort();
+  }
+  return _pimrank_to_node_mapping[rank_id];
 }

@@ -78,9 +78,12 @@ def allocate_hugetlb(args):
     with open('/proc/sys/vm/nr_hugepages', 'w') as f:
         f.write(str(pages))
     # Number of numa nodes
-    with open('/sys/devices/system/node/online', 'r') as f:
-        nodes = f.read().strip().split('-')
-        args.numa_nodes = int(nodes[1]) + 1
+    if 'EVAL_WITH_NUMA_NODES' in os.environ:
+        args.numa_nodes = int(os.environ['EVAL_WITH_NUMA_NODES'])
+    else:
+        with open('/sys/devices/system/node/online', 'r') as f:
+            nodes = f.read().strip().split('-')
+            args.numa_nodes = int(nodes[1]) + 1
     # GiB per node
     args.hugetlb_size_gb_per_node = int(args.hugetlb_size_gb // args.numa_nodes)
 

@@ -5,8 +5,8 @@ This can be used to simulate custom NUMA configuration different from the one OS
 Its primary usage is to simulate 4-node partitioning of MosaicDB on a 2-node system.
 
 Since it is developed for limited use case, it has many restrictions:
-- Not supports OLTPim (only cpu-only version supported)
 - Must include all cpus available in the system
+- Must include all PIM ranks available in the system (if equipped)
 - All cpus in each simulated node should be in the same real numa node.
 - If two cpus are hyperthreaded cores from the same physical core, they should be in the same simulated node.
 
