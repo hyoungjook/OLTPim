@@ -608,6 +608,7 @@ void bench_runner::start_measurement() {
   std::cout << elapsed_sec << " time(s), "
         << n_commits << " commits, "
         << n_aborts << " aborts, "
+        << avg_latency_ms << " avg(ms), "
         << p99_latency_ms << " p99(ms), ";
   if (ermia::config::measure_energy) {
     std::cout

@@ -78,12 +78,9 @@ def allocate_hugetlb(args):
     with open('/proc/sys/vm/nr_hugepages', 'w') as f:
         f.write(str(pages))
     # Number of numa nodes
-    if 'EVAL_WITH_NUMA_NODES' in os.environ:
-        args.numa_nodes = int(os.environ['EVAL_WITH_NUMA_NODES'])
-    else:
-        with open('/sys/devices/system/node/online', 'r') as f:
-            nodes = f.read().strip().split('-')
-            args.numa_nodes = int(nodes[1]) + 1
+    with open('/sys/devices/system/node/online', 'r') as f:
+        nodes = f.read().strip().split('-')
+        args.numa_nodes = int(nodes[1]) + 1
     # GiB per node
     args.hugetlb_size_gb_per_node = int(args.hugetlb_size_gb // args.numa_nodes)
 
@@ -312,7 +309,8 @@ def print_result(args, values):
         f"{args.threads},{args.coro_batch_size}," + \
         f"{args.logging},{args.numa_local_workload}," + \
         f"{args.gc},{args.interleave},{args.pim_multiget},{args.ycsb_zipfian_theta}," + \
-        f"{values['time(s)']},{values['commits']},{values['aborts']},{values['p99(ms)']}," + \
+        f"{values['time(s)']},{values['commits']},{values['aborts']}," + \
+        f"{values['avg(ms)']},{values['p99(ms)']}," + \
         f"{values['dram.rd(MiB)']},{values['dram.wr(MiB)']}," + \
         f"{values['pim.rd(MiB)']},{values['pim.wr(MiB)']}," + \
         "\n"
@@ -323,7 +321,7 @@ def print_result(args, values):
 def print_header(result_file):
     csv_header = 'system,suffix,workload,workload_size,threads,corobatchsize,' + \
         'log,NUMALocal,GC,Interleave,PIMMultiget,YCSBzipfian,' + \
-        'time(s),commits,aborts,p99(ms),' + \
+        'time(s),commits,aborts,avg(ms),p99(ms),' + \
         'dram.rd(MiB),dram.wr(MiB),' + \
         'pim.rd(MiB),pim.wr(MiB),' + \
         '\n'
