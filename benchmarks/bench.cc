@@ -10,6 +10,7 @@
 #include <sys/sysinfo.h>
 #include <sys/times.h>
 #include <sys/wait.h>
+#include <ittnotify.h>
 
 #include "bench.h"
 
@@ -346,6 +347,7 @@ void bench_runner::start_measurement() {
   oltpim::engine::g_engine.start_measurement();
 #endif
   util::timer t, t_nosync;
+  __itt_resume();
   barrier_b.count_down();  // bombs away!
 
   double total_util = 0;
@@ -423,6 +425,7 @@ void bench_runner::start_measurement() {
   }
 
   const unsigned long elapsed_nosync = t_nosync.lap();
+  __itt_pause();
 
   if (ermia::config::measure_energy) {
     kill(eng_perf_pid, SIGINT);

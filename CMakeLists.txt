@@ -26,7 +26,7 @@ else()
   link_directories(/usr/local/lib)
 endif()
 
-set(LINK_FLAGS "-lc++abi -lnuma -lpthread -pthread -lrt -lglog -lgflags -luring")
+set(LINK_FLAGS "-lc++abi -lnuma -lpthread -pthread -lrt -lglog -lgflags -luring -ldl -littnotify")
 link_libraries(${LINK_FLAGS})
 
 if(NOT DEFINED NO_UPMEM)
@@ -68,6 +68,8 @@ include_directories(masstree)
 include_directories(third-party/sparsehash/src)
 include_directories(oltpim-engine/include)
 include_directories(oltpim-engine/include/host)
+include_directories(/opt/intel/oneapi/vtune/latest/sdk/include)
+link_directories(/opt/intel/oneapi/vtune/latest/sdk/lib64)
 
 add_subdirectory(benchmarks)
 add_subdirectory(benchmarks/ycsb)
