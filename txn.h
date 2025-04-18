@@ -207,8 +207,8 @@ public:
     // prepended by log_insert/update etc.
     pim_write_set.emplace_back(entry, index_id, pim_id, oid, size + sizeof(dbtuple), insert);
   }
-  inline void add_to_pim_write_set_secondary_idx(uint32_t pim_id) {
-    pim_write_set.emplace_back(NULL_PTR, 0, pim_id, 0, 0, true);
+  inline void add_to_pim_write_set_secondary_idx(uint32_t pim_id, uint32_t oid) {
+    pim_write_set.emplace_back(NULL_PTR, 0, pim_id, oid, 0, true);
   }
 #endif
 
@@ -281,7 +281,7 @@ public:
   ermia::pim::write_set_t pim_write_set;
   // pim_request_buffer should be the last member
   uint8_t pim_request_buffer[
-    sizeof(oltpim::request_commit) * ermia::pim::write_set_t::kMaxEntries];
+    sizeof(oltpim::request_finalize) * ermia::pim::write_set_t::kMaxEntries];
 #else
   write_set_t write_set;
 #endif

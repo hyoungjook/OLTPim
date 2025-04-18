@@ -204,7 +204,8 @@ ConcurrentMasstreeIndex::pim_InsertRecordEnd(transaction *t, void *req_, uint64_
   }
   dbtuple *tuple = (dbtuple*)((Object*)new_obj.offset())->GetPayload();
   int pim_id = pim_id_of(req->args.key);
-  t->add_to_pim_write_set(new_obj, index_id, pim_id, rets.oid, tuple->size, true);
+  if (rets.status == STATUS_SUCCESS && rets.add_to_write_set)
+    t->add_to_pim_write_set(new_obj, index_id, pim_id, rets.oid, tuple->size, true);
   if (ermia::config::enable_gc) pim_gc_tuple_chain(rets.gc_begin, rets.gc_num);
   if (oid) *oid = SVALUE_MAKE(pim_id, rets.oid);
   co_return {RC_TRUE};
@@ -247,7 +248,8 @@ ConcurrentMasstreeIndex::pim_InsertOIDEnd(transaction *t, void *req_) {
     uint16_t rc = (rets.status == STATUS_FAILED) ? RC_FALSE : RC_ABORT_SI_CONFLICT;
     co_return {rc};
   }
-  t->add_to_pim_write_set_secondary_idx(pim_id_of(req->args.key));
+  if (rets.status == STATUS_SUCCESS && rets.add_to_write_set)
+    t->add_to_pim_write_set_secondary_idx(pim_id_of(req->args.key), rets.oid);
   co_return {RC_TRUE};
 }
 
@@ -296,7 +298,8 @@ ConcurrentMasstreeIndex::pim_UpdateRecordEnd(transaction *t, void *req_) {
   obj->SetNextPersistent(fat_ptr{rets.old_value}); // connect tuple chain
   auto *tuple = (dbtuple*)obj->GetPayload();
   int pim_id = pim_id_of(req->args.key);
-  t->add_to_pim_write_set(new_obj, index_id, pim_id, rets.oid, tuple->size, false);
+  if (rets.status == STATUS_SUCCESS && rets.add_to_write_set)
+    t->add_to_pim_write_set(new_obj, index_id, pim_id, rets.oid, tuple->size, false);
   if (ermia::config::enable_gc) pim_gc_tuple_chain(rets.gc_begin, rets.gc_num);
   co_return {RC_TRUE};
 }
@@ -338,7 +341,8 @@ ConcurrentMasstreeIndex::pim_RemoveRecordEnd(transaction *t, void *req_) {
     co_return rc;
   }
   int pim_id = pim_id_of(req->args.key);
-  t->add_to_pim_write_set(NULL_PTR, index_id, pim_id, rets.oid, 0, false);
+  if (rets.status == STATUS_SUCCESS && rets.add_to_write_set)
+    t->add_to_pim_write_set(NULL_PTR, index_id, pim_id, rets.oid, 0, false);
   if (ermia::config::enable_gc) pim_gc_tuple_chain(rets.gc_begin, rets.gc_num);
   co_return {RC_TRUE};
 }

@@ -19,7 +19,7 @@ void set_index_partition_interval(
   const char *index_name, uint64_t interval_bits, bool numa_local, uint32_t numa_id);
 
 struct log_record_t {
-  fat_ptr entry; // if entry == NULL_PTR && is_insert, it's secondary index record: only pim_id is valid.
+  fat_ptr entry; // if entry == NULL_PTR && is_insert, it's secondary index record: only pim_id & oid are valid.
   bool is_insert;
   uint8_t index_id;
   uint16_t pim_id;
@@ -67,7 +67,6 @@ struct write_set_t {
     return pim_ids;
   }
 };
-static_assert(sizeof(oltpim::request_commit) >= sizeof(oltpim::request_abort), "");
 
 class PIMScanCallback {
 public:
