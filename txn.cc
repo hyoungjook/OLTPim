@@ -225,7 +225,7 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
     auto &ws_entry = pim_write_set[i];
     new (&reqs[i]) oltpim::request_finalize;
     auto &args = reqs[i].args;
-    args.xid = (xid._val) >> 16;
+    //args.xid = (xid._val) >> 16;
     args.csn = xc->end;
     args.oid = ws_entry.oid;
     args.is_commit = 0;
@@ -301,7 +301,7 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
       auto &ws_entry = pim_write_set[i];
       new (&reqs[i]) oltpim::request_finalize;
       auto &args = reqs[i].args;
-      args.xid = (xid._val) >> 16;
+      //args.xid = (xid._val) >> 16;
       args.csn = xc->end;
       args.oid = ws_entry.oid;
       args.is_commit = 1;

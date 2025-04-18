@@ -208,7 +208,7 @@ public:
     pim_write_set.emplace_back(entry, index_id, pim_id, oid, size + sizeof(dbtuple), insert);
   }
   inline void add_to_pim_write_set_secondary_idx(uint32_t pim_id, uint32_t oid) {
-    pim_write_set.emplace_back(NULL_PTR, 0, pim_id, oid, 0, true);
+    pim_write_set.emplace_back({(uint64_t)-1}, 0, pim_id, oid, 0, false);
   }
 #endif
 

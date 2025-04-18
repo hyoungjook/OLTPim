@@ -19,7 +19,10 @@ void set_index_partition_interval(
   const char *index_name, uint64_t interval_bits, bool numa_local, uint32_t numa_id);
 
 struct log_record_t {
-  fat_ptr entry; // if entry == NULL_PTR && is_insert, it's secondary index record: only pim_id & oid are valid.
+  // Normal record (insert, update): all fields are valid (MSB of oid is 0)
+  // Tombstone record: entry = NULL_PTR, size = 0, all other fields are valid (MSB of oid is 0)
+  // Secondary index record: entry = -1, only pim_id & oid are valid. Not logged. (MSB of oid is 1)
+  fat_ptr entry;
   bool is_insert;
   uint8_t index_id;
   uint16_t pim_id;
@@ -31,7 +34,7 @@ struct log_record_t {
     : entry(entry), is_insert(insert), index_id(index_id), pim_id(pim_id), oid(oid), size(size) {}
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
   inline Object *get_object() {return (Object*)entry.offset();}
-  inline bool is_secondary_index_record() {return (entry._ptr == 0 && is_insert);}
+  inline bool is_secondary_index_record() {return (entry._ptr == (uint64_t)-1);}
 #else
   // Indexonly: entry stores pointer to the oid_array entry
   inline Object *get_object() {return (Object*)((fat_ptr*)entry._ptr)->offset();}
