@@ -91,6 +91,8 @@ extern std::string coro_cold_tx_name;
 extern uint32_t coro_check_cold_tx_interval;
 extern bool scan_with_it;
 
+extern bool oltpim_use_pim_wset;
+
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the
 // difference between pipelined/sync replay which use the pdest array.

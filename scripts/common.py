@@ -57,7 +57,8 @@ def run(args, system, workload, workload_size,
         bench_seconds, bench_threads, hugetlb_size_gb,
         coro_batch_size=None, no_logging=False,
         no_numa_local_workload=False, no_pim_multiget=False,
-        no_gc=False, no_interleave=False, ycsb_zipfian_theta=0,
+        no_gc=False, no_interleave=False, oltpim_use_pim_wset=False,
+        ycsb_zipfian_theta=0,
         executable_suffix=None):
     if not args.systems[system]:
         return
@@ -88,6 +89,8 @@ def run(args, system, workload, workload_size,
         cmd += ['--no-gc']
     if no_interleave:
         cmd += ['--no-interleave']
+    if oltpim_use_pim_wset:
+        cmd += ['--oltpim-use-pim-wset']
     if ycsb_zipfian_theta > 0:
         cmd += ['--ycsb-zipfian-theta', str(ycsb_zipfian_theta)]
     if executable_suffix:

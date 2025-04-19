@@ -85,6 +85,7 @@ uint64_t fetch_cold_tx_interval = 0;
 bool test_spinlock = false;
 uint64_t test_spinlock_cs = 0;
 bool test_coro_spinlock = false;
+bool oltpim_use_pim_wset = false;
 
 void init() {
   ALWAYS_ASSERT(threads);

@@ -41,7 +41,7 @@ public:
 };
 
 // You should re-compile this if you want different ops_per_hot_txn
-static constexpr int ops_per_hot_txn_const = 10;
+static constexpr int ops_per_txn_const = 10;
 class ycsb_oltpim_worker : public ycsb_base_worker {
  public:
   ycsb_oltpim_worker(
@@ -102,10 +102,11 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
 
     if (FLAGS_ycsb_oltpim_multiget) {
       LOG_IF(FATAL,
-             !(FLAGS_ycsb_ops_per_hot_tx == ops_per_hot_txn_const &&
-               FLAGS_ycsb_update_per_tx == ops_per_hot_txn_const &&
-               FLAGS_ycsb_ins_per_tx == ops_per_hot_txn_const))
-          << "Recompile with matching ops_per_hot_txn_const in ycsb-oltpim.cc";
+             !(FLAGS_ycsb_ops_per_hot_tx == ops_per_txn_const &&
+               FLAGS_ycsb_update_per_tx == ops_per_txn_const &&
+               FLAGS_ycsb_ins_per_tx == ops_per_txn_const &&
+               FLAGS_ycsb_ops_per_tx == ops_per_txn_const))
+          << "Recompile with matching ops_per_txn_const in ycsb-oltpim.cc";
     }
 
     LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::HybridCoro) << "Read txn type must be hybrid-coro";
@@ -303,7 +304,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
 
   ermia::coro::task<rc_t> txn_hot_read_multiget(ermia::transaction *txn, uint32_t idx) {
     ASSERT(!ermia::config::index_probe_only);
-    oltpim::request_get reqs[ops_per_hot_txn_const];
+    oltpim::request_get reqs[ops_per_txn_const];
     for (int j = 0; j < FLAGS_ycsb_ops_per_hot_tx; ++j) {
       table_index->pim_GetRecordBegin(txn, rng_gen_key(true), &reqs[j]);
     }
@@ -357,7 +358,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   }
 
   ermia::coro::task<rc_t> txn_insert_multiget(ermia::transaction *txn, uint32_t idx) {
-    oltpim::request_insert reqs[ops_per_hot_txn_const];
+    oltpim::request_insert reqs[ops_per_txn_const];
     ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
     for (int j = 0; j < FLAGS_ycsb_ins_per_tx; ++j) {
       *(char *)v.p = 'a';
@@ -401,7 +402,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   }
 
   ermia::coro::task<rc_t> txn_hot_update_multiget(ermia::transaction *txn, uint32_t idx) {
-    oltpim::request_update reqs[ops_per_hot_txn_const];
+    oltpim::request_update reqs[ops_per_txn_const];
     ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
     for (int j = 0; j < FLAGS_ycsb_update_per_tx; ++j) {
       new (v.data()) ycsb_kv::value("a");
@@ -444,7 +445,7 @@ class ycsb_oltpim_worker : public ycsb_base_worker {
   }
 
   ermia::coro::task<rc_t> txn_scan_multiget(ermia::transaction *txn, uint32_t idx) {
-    pim_ycsb_scan_callback callbacks[ops_per_hot_txn_const];
+    pim_ycsb_scan_callback callbacks[ops_per_txn_const];
     rc_t rc;
     for (int j = 0; j < FLAGS_ycsb_ops_per_tx; ++j) {
       uint64_t start_key = rng_gen_key(true);

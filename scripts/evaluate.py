@@ -48,6 +48,8 @@ def parse_args(argv = sys.argv[1:]):
         help='Disable garbage collection.')
     parser.add_argument('--no-interleave', action='store_false', dest='interleave',
         help='Disable PIM-CPU interleaving.')
+    parser.add_argument('--oltpim-use-pim-wset', action='store_true',
+        help='Enable OLTPim PIM-side write set')
     parser.add_argument('--ycsb-zipfian-theta', type=float, default=0,
         help='Enable zipfian distribution on YCSB with theta value.')
     parser.add_argument('--tpcc-atomic-ytd', action='store_true',
@@ -166,10 +168,12 @@ def ycsb_options(args):
         case 'YCSB-S8': ycsb_type = 'S'; ycsb_scan_length = 8
         case 'YCSB-S16': ycsb_type = 'S'; ycsb_scan_length = 16
         case _: raise ValueError(f'Invalid workload={args.workload}')
+    ycsb_ops_per_tx = 10
     opts = [
-        '-ycsb_ops_per_hot_tx=10',
-        '-ycsb_update_per_tx=10',
-        '-ycsb_ins_per_tx=10',
+        f'-ycsb_ops_per_hot_tx={ycsb_ops_per_tx}',
+        f'-ycsb_update_per_tx={ycsb_ops_per_tx}',
+        f'-ycsb_ins_per_tx={ycsb_ops_per_tx}',
+        f'-ycsb_ops_per_tx={ycsb_ops_per_tx}',
         '-ycsb_hot_tx_percent=1.0',
         '-ycsb_read_tx_type=hybrid-coro',
         f'-ycsb_numa_local={numa_local}',
@@ -224,11 +228,13 @@ def oltpim_options(args):
     if not args.coro_batch_size:
         args.coro_batch_size = 256
     interleave = 1 if args.interleave else 0
+    pim_wset = 1 if args.oltpim_use_pim_wset else 0
     opts = [
         f'-coro_batch_size={args.coro_batch_size}',
         '-coro_scheduler=1',
         f'-oltpim_num_ranks_per_numa_node={num_ranks_per_numa}',
-        f'-oltpim_interleave={interleave}'
+        f'-oltpim_interleave={interleave}',
+        f'-oltpim_use_pim_wset={pim_wset}'
     ]
     return opts
 

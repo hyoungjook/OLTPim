@@ -282,6 +282,7 @@ public:
   // pim_request_buffer should be the last member
   uint8_t pim_request_buffer[
     sizeof(oltpim::request_finalize) * ermia::pim::write_set_t::kMaxEntries];
+  static_assert(sizeof(oltpim::request_finalize) == sizeof(oltpim::request_finalize_ws));
 #else
   write_set_t write_set;
 #endif

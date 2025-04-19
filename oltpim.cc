@@ -11,7 +11,7 @@
 
 DEFINE_uint32(oltpim_num_ranks_per_numa_node, 1, "Number of PIM ranks to allocate per numa node");
 DEFINE_bool(oltpim_interleave, true, "Enable CPU-PIM interleaved execution");
-
+DEFINE_bool(oltpim_use_pim_wset, false, "Enable PIM-side write set");
 namespace ermia {
 
 namespace pim {
@@ -24,6 +24,7 @@ void register_index(ConcurrentMasstreeIndex *index) {
 }
 
 void finalize_index_setup() {
+  ermia::config::oltpim_use_pim_wset = FLAGS_oltpim_use_pim_wset;
   oltpim::engine::config config = {
     .num_ranks_per_numa_node = (int)FLAGS_oltpim_num_ranks_per_numa_node,
     .alloc_fn = ermia::config::tls_alloc ? ermia::MM::allocate_onnode : nullptr,
@@ -33,7 +34,8 @@ void finalize_index_setup() {
     .gc_prob = 0,
 #endif
     .enable_measure_energy = (ermia::config::measure_energy != 0),
-    .enable_interleave = FLAGS_oltpim_interleave
+    .enable_interleave = FLAGS_oltpim_interleave,
+    .enable_pim_wset = FLAGS_oltpim_use_pim_wset
   };
   oltpim::engine::g_engine.init(config);
   uint32_t num_pims = oltpim::engine::g_engine.num_pims();

@@ -220,20 +220,43 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
 
   // abort to pim
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
-  auto *reqs = (oltpim::request_finalize*)pim_request_buffer;
-  for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
-    auto &ws_entry = pim_write_set[i];
-    new (&reqs[i]) oltpim::request_finalize;
-    auto &args = reqs[i].args;
-    //args.xid = (xid._val) >> 16;
-    args.csn = xc->end;
-    args.oid = ws_entry.oid;
-    args.is_commit = 0;
-    oltpim::engine::g_engine.push(ws_entry.pim_id, &reqs[i]);
+  if (ermia::config::oltpim_use_pim_wset) {
+    auto *reqs = (oltpim::request_finalize_ws*)pim_request_buffer;
+    auto pim_ids = pim_write_set.pim_id_sort(); // destroys pim_write_set
+    uint32_t num_uniq_pim_ids = 0;
+    for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+      if (i == 0 || pim_ids[i-1] != pim_ids[i]) {
+        new (&reqs[num_uniq_pim_ids]) oltpim::request_finalize_ws;
+        auto &args = reqs[num_uniq_pim_ids].args;
+        args.xid_s.xid = (xid._val) >> 16;
+        args.xid_s.is_commit = 0;
+        args.csn = xc->end;
+        oltpim::engine::g_engine.push(pim_ids[i], &reqs[num_uniq_pim_ids]);
+        ++num_uniq_pim_ids;
+      }
+    }
+    for (uint32_t i = 0; i < num_uniq_pim_ids; ++i) {
+      while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
+        co_await std::suspend_always{};
+      }
+    }
   }
-  for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
-    while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
-      co_await std::suspend_always{};
+  else {
+    auto *reqs = (oltpim::request_finalize*)pim_request_buffer;
+    for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+      auto &ws_entry = pim_write_set[i];
+      new (&reqs[i]) oltpim::request_finalize;
+      auto &args = reqs[i].args;
+      //args.xid = (xid._val) >> 16;
+      args.csn = xc->end;
+      args.oid = ws_entry.oid;
+      args.is_commit = 0;
+      oltpim::engine::g_engine.push(ws_entry.pim_id, &reqs[i]);
+    }
+    for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+      while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
+        co_await std::suspend_always{};
+      }
     }
   }
 #endif
@@ -296,20 +319,43 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
 
     // commit to pim
 #if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
-    auto *reqs = (oltpim::request_finalize*)pim_request_buffer;
-    for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
-      auto &ws_entry = pim_write_set[i];
-      new (&reqs[i]) oltpim::request_finalize;
-      auto &args = reqs[i].args;
-      //args.xid = (xid._val) >> 16;
-      args.csn = xc->end;
-      args.oid = ws_entry.oid;
-      args.is_commit = 1;
-      oltpim::engine::g_engine.push(ws_entry.pim_id, &reqs[i]);
+    if (ermia::config::oltpim_use_pim_wset) {
+      auto *reqs = (oltpim::request_finalize_ws*)pim_request_buffer;
+      auto pim_ids = pim_write_set.pim_id_sort(); // destroys pim_write_set
+      uint32_t num_uniq_pim_ids = 0;
+      for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+        if (i == 0 || pim_ids[i-1] != pim_ids[i]) {
+          new (&reqs[num_uniq_pim_ids]) oltpim::request_finalize_ws;
+          auto &args = reqs[num_uniq_pim_ids].args;
+          args.xid_s.xid = (xid._val) >> 16;
+          args.xid_s.is_commit = 1;
+          args.csn = xc->end;
+          oltpim::engine::g_engine.push(pim_ids[i], &reqs[num_uniq_pim_ids]);
+          ++num_uniq_pim_ids;
+        }
+      }
+      for (uint32_t i = 0; i < num_uniq_pim_ids; ++i) {
+        while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
+          co_await std::suspend_always{};
+        }
+      }
     }
-    for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
-      while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
-        co_await std::suspend_always{};
+    else {
+      auto *reqs = (oltpim::request_finalize*)pim_request_buffer;
+      for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+        auto &ws_entry = pim_write_set[i];
+        new (&reqs[i]) oltpim::request_finalize;
+        auto &args = reqs[i].args;
+        //args.xid = (xid._val) >> 16;
+        args.csn = xc->end;
+        args.oid = ws_entry.oid;
+        args.is_commit = 1;
+        oltpim::engine::g_engine.push(ws_entry.pim_id, &reqs[i]);
+      }
+      for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+        while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
+          co_await std::suspend_always{};
+        }
       }
     }
 #endif
