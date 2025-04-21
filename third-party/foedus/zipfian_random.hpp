@@ -21,6 +21,9 @@
 #include <stdint.h>
 
 #include <cmath>
+#include <map>
+#include <utility>
+#include <mutex>
 
 #include "uniform_random.hpp"
 
@@ -35,10 +38,17 @@ namespace assorted {
 class ZipfianRandom {
  private:
   double zeta(uint64_t n) {
+    // memoize
+    static std::mutex memo_mutex;
+    std::unique_lock lck(memo_mutex);
+    static std::map<std::pair<uint64_t,double>,double> memo;
+    auto iter = memo.find(std::make_pair(n, theta_));
+    if (iter != memo.end()) return iter->second;
     double sum = 0;
     for (uint64_t i = 0; i < n; i++) {
       sum += 1 / std::pow(i + 1, theta_);
     }
+    memo.insert(std::make_pair(std::make_pair(n, theta_), sum));
     return sum;
   }
 
