@@ -8,8 +8,8 @@ BREAKDOWNS = [
     (MOSAICDB, True, False, None),
     (MOSAICDB, False, False, None),
     (OLTPIM, True, True, '_indexonly_nodirect'),
-    (OLTPIM, True, True, '_nodirect'),
-    (OLTPIM, True, True, None),
+    (OLTPIM, True, True, '_indexonly'),
+    (OLTPIM, True, False, '_indexonly'),
     (OLTPIM, True, False, None),
     (OLTPIM, False, False, None),
 ]
