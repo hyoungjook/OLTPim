@@ -20,6 +20,33 @@ COLORS = {
     'transparent': '#ffffff00',
 }
 
+STYLES = {
+    'mosaicdb': {
+        'plot': {'color': COLORS['mosaicdb'], 'linestyle': '-', 'marker': 'X'},
+        'plot-highlight': {'color': COLORS['mosaicdb'], 'marker': '*', 'markersize': 15},
+        'bar': {'edgecolor': COLORS['mosaicdb'], 'facecolor': 'white', 'hatch': None},
+        'bar-cover': {'edgecolor': COLORS['mosaicdb'], 'facecolor': COLORS['transparent']},
+    },
+    'oltpim': {
+        'plot': {'color': COLORS['oltpim'], 'linestyle': '-', 'marker': 'o'},
+        'plot-highlight': {'color': COLORS['oltpim'], 'marker': '*', 'markersize': 15},
+        'bar': {'edgecolor': COLORS['oltpim'], 'facecolor': 'white', 'hatch': 'oo'},
+        'bar-cover': {'edgecolor': COLORS['oltpim'], 'facecolor': COLORS['transparent']},
+    },
+    'mosaicdb-light': {
+        'plot': {'color': COLORS['mosaicdb-light'], 'linestyle': '--', 'marker': 'P'},
+    },
+    'oltpim-light': {
+        'plot': {'color': COLORS['oltpim-light'], 'linestyle': '--', 'marker': '^'},
+        'bar': {'edgecolor': COLORS['oltpim-light'], 'facecolor': 'white', 'hatch': '||'},
+        'bar-cover': {'edgecolor': COLORS['oltpim-light'], 'facecolor': COLORS['transparent']},
+    },
+    'dramrd': {'edgecolor': 'black', 'facecolor': COLORS['dramrd'], 'hatch': '\\\\\\', 'linewidth': 0, 'hatch_linewidth': 0.5},
+    'dramwr': {'edgecolor': 'black', 'facecolor': COLORS['dramwr'], 'hatch': '///', 'linewidth': 0, 'hatch_linewidth': 0.5},
+    'pimrd': {'edgecolor': 'black', 'facecolor': COLORS['pimrd'], 'hatch': '+++', 'linewidth': 0, 'hatch_linewidth': 0.5},
+    'pimwr': {'edgecolor': 'black', 'facecolor': COLORS['pimwr'], 'hatch': 'xxx', 'linewidth': 0, 'hatch_linewidth': 0.5},
+}
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--result-dir', type=str, required=True,
@@ -64,8 +91,8 @@ def plot_intro(args):
     def simple_bar(axis, yname, ylabel):
         width = 0.3
         indices = [1, 0]
-        axis.bar([x - width/2 for x in indices], stats_1B[yname][MOSAICDB], width, color=COLORS['mosaicdb'], label=MOSAICDB)
-        axis.bar([x + width/2 for x in indices], stats_1B[yname][OLTPIM], width, color=COLORS['oltpim'], label=OLTPIM)
+        axis.bar([x - width/2 for x in indices], stats_1B[yname][MOSAICDB], width, label=MOSAICDB, **STYLES['mosaicdb']['bar'])
+        axis.bar([x + width/2 for x in indices], stats_1B[yname][OLTPIM], width, label=OLTPIM, **STYLES['oltpim']['bar'])
         speedups = [f'{max(m,o)/min(m,o):.2f}x' for m, o in zip(stats_1B[yname][MOSAICDB], stats_1B[yname][OLTPIM])]
         maxs = [max(m, o) for m, o in zip(stats_1B[yname][MOSAICDB], stats_1B[yname][OLTPIM])]
         rects = axis.bar(indices, maxs, alpha=0)
@@ -247,8 +274,8 @@ def plot_overall(args):
         ycsbs['tput'][MOSAICDB] + ycsbs['tput'][OLTPIM]
     )
     def tput_plot(axis, workload, indices, labels, title, top_ylim=True):
-        axis.plot(indices, workload['tput'][MOSAICDB], color=COLORS['mosaicdb'], linestyle='-', marker='o', label=MOSAICDB)
-        axis.plot(indices, workload['tput'][OLTPIM], color=COLORS['oltpim'], linestyle='-', marker='o', label=OLTPIM)
+        axis.plot(indices, workload['tput'][MOSAICDB], label=MOSAICDB, **STYLES['mosaicdb']['plot'])
+        axis.plot(indices, workload['tput'][OLTPIM], label=OLTPIM, **STYLES['oltpim']['plot'])
         axis.set_xticks(indices)
         axis.set_xticklabels('')
         axis.set_xlabel('')
@@ -258,7 +285,7 @@ def plot_overall(args):
         if top_ylim: axis.set_ylim(bottom=0, top=tput_ylim * 1.1)
         else: axis.set_ylim(bottom=0)
         axis.title.set_text(title)
-        axis.grid(axis='y', color=COLORS['mosaicdb-light'], linestyle='--')
+        axis.grid(axis='y', color='lightgrey', linestyle='--')
         axis.set_axisbelow(True)
     tput_plot(axes[0][0], ycsbc, x_indices, size_labels, 'YCSB-C')
     tput_plot(axes[0][1], ycsbb, x_indices, size_labels, 'YCSB-B')
@@ -284,19 +311,19 @@ def plot_overall(args):
         indices1 = [x - width/2 for x in indices]
         indices2 = [x + width/2 for x in indices]
         bottom = [0 for _ in indices]
-        axis.bar(indices1, workload['dramrd'][MOSAICDB], width, bottom=bottom, color=COLORS['dramrd'])
+        axis.bar(indices1, workload['dramrd'][MOSAICDB], width, bottom=bottom, **STYLES['dramrd'])
         bottom = [b + n for b, n in zip(bottom, workload['dramrd'][MOSAICDB])]
-        axis.bar(indices1, workload['dramwr'][MOSAICDB], width, bottom=bottom, color=COLORS['dramwr'])
+        axis.bar(indices1, workload['dramwr'][MOSAICDB], width, bottom=bottom, **STYLES['dramwr'])
         bottom = [0 for _ in indices]
-        axis.bar(indices2, workload['dramrd'][OLTPIM], width, bottom=bottom, color=COLORS['dramrd'])
+        axis.bar(indices2, workload['dramrd'][OLTPIM], width, bottom=bottom, **STYLES['dramrd'])
         bottom = [b + n for b, n in zip(bottom, workload['dramrd'][OLTPIM])]
-        axis.bar(indices2, workload['dramwr'][OLTPIM], width, bottom=bottom, color=COLORS['dramwr'])
+        axis.bar(indices2, workload['dramwr'][OLTPIM], width, bottom=bottom, **STYLES['dramwr'])
         bottom = [b + n for b, n in zip(bottom, workload['dramwr'][OLTPIM])]
-        axis.bar(indices2, workload['pimrd'][OLTPIM], width, bottom=bottom, color=COLORS['pimrd'])
+        axis.bar(indices2, workload['pimrd'][OLTPIM], width, bottom=bottom, **STYLES['pimrd'])
         bottom = [b + n for b, n in zip(bottom, workload['pimrd'][OLTPIM])]
-        axis.bar(indices2, workload['pimwr'][OLTPIM], width, bottom=bottom, color=COLORS['pimwr'])
-        axis.bar(indices1, workload['totalbw'][MOSAICDB], width, color=COLORS['transparent'], edgecolor=COLORS['mosaicdb'])
-        axis.bar(indices2, workload['totalbw'][OLTPIM], width, color=COLORS['transparent'], edgecolor=COLORS['oltpim'])
+        axis.bar(indices2, workload['pimwr'][OLTPIM], width, bottom=bottom, **STYLES['pimwr'])
+        axis.bar(indices1, workload['totalbw'][MOSAICDB], width, **STYLES['mosaicdb']['bar-cover'])
+        axis.bar(indices2, workload['totalbw'][OLTPIM], width, **STYLES['oltpim']['bar-cover'])
         axis.set_xticks(indices)
         axis.set_xticklabels(labels)
         axis.set_xlabel('')
@@ -325,15 +352,15 @@ def plot_overall(args):
 
     legh = [
         (
-            mline.Line2D([0], [0], color=COLORS['mosaicdb'], marker='o'),
-            mpatch.Patch(facecolor='white', edgecolor=COLORS['mosaicdb'])
+            mline.Line2D([0], [0], **STYLES['mosaicdb']['plot']),
+            mpatch.Patch(**STYLES['mosaicdb']['bar-cover'])
         ),
         (
-            mline.Line2D([0], [0], color=COLORS['oltpim'], marker='o'),
-            mpatch.Patch(facecolor='white', edgecolor=COLORS['oltpim'])
+            mline.Line2D([0], [0], **STYLES['oltpim']['plot']),
+            mpatch.Patch(**STYLES['oltpim']['bar-cover'])
         ),
-        mpatch.Patch(color=COLORS['dramrd']), mpatch.Patch(color=COLORS['dramwr']),
-        mpatch.Patch(color=COLORS['pimrd']), mpatch.Patch(color=COLORS['pimwr']),
+        mpatch.Patch(**STYLES['dramrd']), mpatch.Patch(**STYLES['dramwr']),
+        mpatch.Patch(**STYLES['pimrd']), mpatch.Patch(**STYLES['pimwr']),
     ]
     legl = [
         MOSAICDB, OLTPIM, 'DRAM.Rd', 'DRAM.Wr', 'PIM.Rd', 'PIM.Wr',
@@ -401,10 +428,10 @@ def plot_gc(args):
     x_labels = [SIZE_TO_LABEL[ycsba[True]['size'][MOSAICDB][x]] for x in x_indices]
 
     def gc_nogc_plot(axis, workload, xlabels, yname):
-        axis.plot(x_indices, workload[True][yname][MOSAICDB], color=COLORS['mosaicdb'], linestyle='-', marker='o', label=MOSAICDB)
-        axis.plot(x_indices, workload[True][yname][OLTPIM], color=COLORS['oltpim'], linestyle='-', marker='o', label=OLTPIM)
-        axis.plot(x_indices, workload[False][yname][MOSAICDB], color=COLORS['mosaicdb-light'], linestyle='--', marker='^', label=MOSAICDB + ' (no GC)')
-        axis.plot(x_indices, workload[False][yname][OLTPIM], color=COLORS['oltpim-light'], linestyle='--', marker='^', label=OLTPIM + ' (no GC)')
+        axis.plot(x_indices, workload[True][yname][MOSAICDB], label=MOSAICDB, **STYLES['mosaicdb']['plot'])
+        axis.plot(x_indices, workload[True][yname][OLTPIM], label=OLTPIM, **STYLES['oltpim']['plot'])
+        axis.plot(x_indices, workload[False][yname][MOSAICDB], label=MOSAICDB + ' (no GC)', **STYLES['mosaicdb-light']['plot'])
+        axis.plot(x_indices, workload[False][yname][OLTPIM], label=OLTPIM + ' (no GC)', **STYLES['oltpim-light']['plot'])
         axis.set_xticks(x_indices)
         axis.set_xticklabels(xlabels)
         axis.set_xlabel('')
@@ -421,8 +448,8 @@ def plot_gc(args):
         [nogc / gc for gc, nogc in zip(workload[True]['tput'][system], workload[False]['tput'][system])]
     def slowdown_plot(axis, workload, xlabels):
         width = 0.3
-        axis.bar([x - width/2 for x in x_indices], slowdown_gen(workload, MOSAICDB), width, color=COLORS['mosaicdb'], label=MOSAICDB)
-        axis.bar([x + width/2 for x in x_indices], slowdown_gen(workload, OLTPIM), width, color=COLORS['oltpim'], label=OLTPIM)
+        axis.bar([x - width/2 for x in x_indices], slowdown_gen(workload, MOSAICDB), width, label=MOSAICDB, **STYLES['mosaicdb']['bar'])
+        axis.bar([x + width/2 for x in x_indices], slowdown_gen(workload, OLTPIM), width, label=OLTPIM, **STYLES['oltpim']['bar'])
         axis.set_xticks(x_indices)
         axis.set_xticklabels(xlabels)
         axis.set_xlabel('')
@@ -549,8 +576,8 @@ def plot_logging(args):
         ycsbu[True]['tput'] + ycsbu[False]['tput']
     )
     def tput_plot(axis, workload, indices, title):
-        axis.plot(indices, workload[True]['tput'], color=COLORS['oltpim'], linestyle='-', marker='o')
-        axis.plot(indices, workload[False]['tput'], color=COLORS['oltpim-light'], linestyle='--', marker='^')
+        axis.plot(indices, workload[True]['tput'], **STYLES['oltpim']['plot'])
+        axis.plot(indices, workload[False]['tput'], **STYLES['oltpim-light']['plot'])
         axis.set_xticks(indices)
         axis.set_xticklabels('')
         axis.set_xlabel('')
@@ -574,8 +601,8 @@ def plot_logging(args):
         width = 0.3
         indices1 = [x - width/2 for x in indices]
         indices2 = [x + width/2 for x in indices]
-        axis.bar(indices1, workload[True]['p99'], width, color=COLORS['oltpim'])
-        axis.bar(indices2, workload[False]['p99'], width, color=COLORS['oltpim-light'])
+        axis.bar(indices1, workload[True]['p99'], width, **STYLES['oltpim']['bar'])
+        axis.bar(indices2, workload[False]['p99'], width, **STYLES['oltpim-light']['bar'])
         axis.set_xticks(indices)
         axis.set_xticklabels('')
         axis.set_xlabel('')
@@ -599,23 +626,23 @@ def plot_logging(args):
         indices1 = [x - width/2 for x in indices]
         indices2 = [x + width/2 for x in indices]
         bottom = [0 for _ in indices]
-        axis.bar(indices1, workload[True]['dramrd'], width, bottom=bottom, color=COLORS['dramrd'])
+        axis.bar(indices1, workload[True]['dramrd'], width, bottom=bottom, **STYLES['dramrd'])
         bottom = [b + n for b, n in zip(bottom, workload[True]['dramrd'])]
-        axis.bar(indices1, workload[True]['dramwr'], width, bottom=bottom, color=COLORS['dramwr'])
+        axis.bar(indices1, workload[True]['dramwr'], width, bottom=bottom, **STYLES['dramwr'])
         bottom = [b + n for b, n in zip(bottom, workload[True]['dramwr'])]
-        axis.bar(indices1, workload[True]['pimrd'], width, bottom=bottom, color=COLORS['pimrd'])
+        axis.bar(indices1, workload[True]['pimrd'], width, bottom=bottom, **STYLES['pimrd'])
         bottom = [b + n for b, n in zip(bottom, workload[True]['pimrd'])]
-        axis.bar(indices1, workload[True]['pimwr'], width, bottom=bottom, color=COLORS['pimwr'])
+        axis.bar(indices1, workload[True]['pimwr'], width, bottom=bottom, **STYLES['pimwr'])
         bottom = [0 for _ in indices]
-        axis.bar(indices2, workload[False]['dramrd'], width, bottom=bottom, color=COLORS['dramrd'])
+        axis.bar(indices2, workload[False]['dramrd'], width, bottom=bottom, **STYLES['dramrd'])
         bottom = [b + n for b, n in zip(bottom, workload[False]['dramrd'])]
-        axis.bar(indices2, workload[False]['dramwr'], width, bottom=bottom, color=COLORS['dramwr'])
+        axis.bar(indices2, workload[False]['dramwr'], width, bottom=bottom, **STYLES['dramwr'])
         bottom = [b + n for b, n in zip(bottom, workload[False]['dramwr'])]
-        axis.bar(indices2, workload[False]['pimrd'], width, bottom=bottom, color=COLORS['pimrd'])
+        axis.bar(indices2, workload[False]['pimrd'], width, bottom=bottom, **STYLES['pimrd'])
         bottom = [b + n for b, n in zip(bottom, workload[False]['pimrd'])]
-        axis.bar(indices2, workload[False]['pimwr'], width, bottom=bottom, color=COLORS['pimwr'])
-        axis.bar(indices1, workload[True]['totalbw'], width, color=COLORS['transparent'], edgecolor='red')
-        axis.bar(indices2, workload[False]['totalbw'], width, color=COLORS['transparent'], edgecolor='pink')
+        axis.bar(indices2, workload[False]['pimwr'], width, bottom=bottom, **STYLES['pimwr'])
+        axis.bar(indices1, workload[True]['totalbw'], width, **STYLES['oltpim']['bar-cover'])
+        axis.bar(indices2, workload[False]['totalbw'], width, **STYLES['oltpim-light']['bar-cover'])
         axis.set_xticks(indices)
         axis.set_xticklabels(labels)
         axis.set_xlabel('')
@@ -634,15 +661,15 @@ def plot_logging(args):
 
     legh = [
         (
-            mline.Line2D([0], [0], color=COLORS['oltpim'], linestyle='-', marker='o'),
-            mpatch.Patch(facecolor=COLORS['oltpim'])
+            mline.Line2D([0], [0], **STYLES['oltpim']['plot']),
+            mpatch.Patch(**STYLES['oltpim']['bar'])
         ),
         (
-            mline.Line2D([0], [0], color=COLORS['oltpim-light'], linestyle='--', marker='^'),
-            mpatch.Patch(facecolor=COLORS['oltpim-light'])
+            mline.Line2D([0], [0], **STYLES['oltpim-light']['plot']),
+            mpatch.Patch(**STYLES['oltpim-light']['bar'])
         ),
-        mpatch.Patch(color=COLORS['dramrd']), mpatch.Patch(color=COLORS['dramwr']),
-        mpatch.Patch(color=COLORS['pimrd']), mpatch.Patch(color=COLORS['pimwr']),
+        mpatch.Patch(**STYLES['dramrd']), mpatch.Patch(**STYLES['dramwr']),
+        mpatch.Patch(**STYLES['pimrd']), mpatch.Patch(**STYLES['pimwr']),
     ]
     legl = [
         OLTPIM, OLTPIM + ' (no log)', 'DRAM.Rd', 'DRAM.Wr', 'PIM.Rd', 'PIM.Wr',
@@ -696,8 +723,8 @@ def plot_skew(args):
         width = 0.3
         indices = range(len(workload['theta'][MOSAICDB]))
         labels = [f'{t:g}' for t in workload['theta'][MOSAICDB]]
-        axis.bar([x - width/2 for x in indices], workload[yname][MOSAICDB], width, color=COLORS['mosaicdb'], label=MOSAICDB)
-        axis.bar([x + width/2 for x in indices], workload[yname][OLTPIM], width, color=COLORS['oltpim'], label=OLTPIM)
+        axis.bar([x - width/2 for x in indices], workload[yname][MOSAICDB], width, label=MOSAICDB, **STYLES['mosaicdb']['bar'])
+        axis.bar([x + width/2 for x in indices], workload[yname][OLTPIM], width, label=OLTPIM, **STYLES['oltpim']['bar'])
         axis.set_xticks(indices)
         axis.set_xticklabels(labels)
         axis.set_xlabel('')
@@ -771,13 +798,13 @@ def plot_batchsize(args):
                 return y
         assert False
     def simple_plot(axis, yname, ylabel, ylog, yticks=None):
-        axis.plot(stats['batchsize'][MOSAICDB], stats[yname][MOSAICDB], linestyle='-', marker='o', color=COLORS['mosaicdb'], label=MOSAICDB)
-        axis.plot(stats['batchsize'][OLTPIM_NOMULTIGET], stats[yname][OLTPIM_NOMULTIGET], linestyle='--', marker='o', color=COLORS['oltpim-light'], label=OLTPIM_NOMULTIGET)
-        axis.plot(stats['batchsize'][OLTPIM], stats[yname][OLTPIM], linestyle='-', marker='o', color=COLORS['oltpim'], label=OLTPIM)
+        axis.plot(stats['batchsize'][MOSAICDB], stats[yname][MOSAICDB], label=MOSAICDB, **STYLES['mosaicdb']['plot'])
+        axis.plot(stats['batchsize'][OLTPIM_NOMULTIGET], stats[yname][OLTPIM_NOMULTIGET], label=OLTPIM_NOMULTIGET, **STYLES['oltpim-light']['plot'])
+        axis.plot(stats['batchsize'][OLTPIM], stats[yname][OLTPIM], label=OLTPIM, **STYLES['oltpim']['plot'])
         mosaicdb_at_optimal_bs = at_optimal_bs(yname, MOSAICDB, MOSAICDB_OPTIMAL_BS)
         oltpim_at_optimal_bs = at_optimal_bs(yname, OLTPIM, OLTPIM_OPTIMAL_BS)
-        axis.plot([MOSAICDB_OPTIMAL_BS], [mosaicdb_at_optimal_bs], marker='*', color=COLORS['mosaicdb'], markersize=15)
-        axis.plot([OLTPIM_OPTIMAL_BS], [oltpim_at_optimal_bs], marker='*', color=COLORS['oltpim'], markersize=15)
+        axis.plot([MOSAICDB_OPTIMAL_BS], [mosaicdb_at_optimal_bs], **STYLES['mosaicdb']['plot-highlight'])
+        axis.plot([OLTPIM_OPTIMAL_BS], [oltpim_at_optimal_bs], **STYLES['oltpim']['plot-highlight'])
         axis.set_xlabel('')
         axis.set_ylabel(ylabel)
         axis.set_xscale('log')
@@ -861,8 +888,8 @@ def plot_breakdown(args):
         labelgen = lambda ys: [f"{y:.1f}" for y in ys]
         indices0 = [0, 5]
         indices1 = [1, 2, 3, 4, 6]
-        rects0 = axis.bar(indices0, ydata0, width, color=COLORS['mosaicdb'], label=MOSAICDB)
-        rects1 = axis.bar(indices1, ydata1, width, color=COLORS['oltpim'], label=OLTPIM)
+        rects0 = axis.bar(indices0, ydata0, width, label=MOSAICDB, **STYLES['mosaicdb']['bar'])
+        rects1 = axis.bar(indices1, ydata1, width, label=OLTPIM, **STYLES['oltpim']['bar'])
         if datalabels:
             axis.bar_label(rects0, labels=labelgen(ydata0), padding=3)
             axis.bar_label(rects1, labels=labelgen(ydata1), padding=3)
