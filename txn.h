@@ -176,16 +176,13 @@ public:
   inline str_arena &string_allocator() { return *sa; }
 
   inline void add_to_write_set(fat_ptr *entry, FID fid, OID oid, uint64_t size, bool insert, bool cold) {
-#if defined(OLTPIM)
-    ALWAYS_ASSERT(false);
-#else
-#ifndef NDEBUG
+/*#ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set[i];
       ASSERT(w.entry);
       ASSERT(w.entry != entry);
     }
-#endif
+#endif*/
 
     // Work out the encoded size to be added to the log block later
     auto logrec_size = align_up(size + sizeof(dbtuple) + sizeof(dlog::log_record));
@@ -193,7 +190,10 @@ public:
     // Each write set entry still just records the size of the actual "data" to
     // be inserted to the log excluding dlog::log_record, which will be
     // prepended by log_insert/update etc.
+#if !defined(OLTPIM)
     write_set.emplace_back(entry, fid, oid, size + sizeof(dbtuple), insert, cold);
+#else
+    pim_write_set.emplace_back(fat_ptr{(uint64_t)entry}, 0, fid, oid, size + sizeof(dbtuple), insert, false);
 #endif
   }
 
@@ -205,10 +205,10 @@ public:
     // Each write set entry still just records the size of the actual "data" to
     // be inserted to the log excluding dlog::log_record, which will be
     // prepended by log_insert/update etc.
-    pim_write_set.emplace_back(entry, index_id, pim_id, oid, size + sizeof(dbtuple), insert);
+    pim_write_set.emplace_back(entry, index_id, pim_id, oid, size + sizeof(dbtuple), insert, true);
   }
   inline void add_to_pim_write_set_secondary_idx(uint32_t pim_id, uint32_t oid) {
-    pim_write_set.emplace_back({(uint64_t)-1}, 0, pim_id, oid, 0, false);
+    pim_write_set.emplace_back({(uint64_t)-1}, 0, pim_id, oid, 0, false, true);
   }
 #endif
 

@@ -567,9 +567,7 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       const size_t sz = Size(v);
       warehouse_total_sz += sz;
       n_warehouses++;
-#if defined(OLTPIM)
-      TryVerifyStrict(sync_wait_oltpim_coro(tbl_warehouse(i)->pim_InsertRecord(txn, tpcc_key64::warehouse(k), Encode(str(sz), v))));
-#elif defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
+#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
       TryVerifyStrict(sync_wait_coro(tbl_warehouse(i)->InsertRecord(txn, Encode(str(Size(k)), k),
                                                  Encode(str(sz), v))));
 #else
@@ -589,12 +587,7 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       ermia::varstr warehouse_v;
 
       rc_t rc = rc_t{RC_INVALID};
-#if defined(OLTPIM)
-      uint64_t pk = tpcc_key64::warehouse(k);
-      rc = sync_wait_oltpim_coro(tbl_warehouse(i)->pim_GetRecord(txn, pk, warehouse_v));
-#else
       tbl_warehouse(i)->GetRecord(txn, rc, Encode(str(Size(k)), k), warehouse_v);
-#endif
       TryVerifyStrict(rc);
 
       const warehouse::value *v = Decode(warehouse_v, warehouse_temp);

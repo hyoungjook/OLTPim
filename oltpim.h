@@ -23,24 +23,24 @@ struct log_record_t {
   // Tombstone record: entry = NULL_PTR, size = 0, all other fields are valid (MSB of oid is 0)
   // Secondary index record: entry = -1, only pim_id & oid are valid. Not logged. (MSB of oid is 1)
   fat_ptr entry;
-  bool is_insert;
+  bool is_insert: 1;
+  bool is_pim_index: 1;
   uint8_t index_id;
   uint16_t pim_id;
   uint32_t oid;
   uint64_t size;
   // Don't do anything on constructor here. It becomes bottleneck on large coro-batch-size.
   log_record_t() {}
-  log_record_t(fat_ptr entry, uint8_t index_id, uint16_t pim_id, uint32_t oid, uint64_t size, bool insert)
-    : entry(entry), is_insert(insert), index_id(index_id), pim_id(pim_id), oid(oid), size(size) {}
-#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
-  inline Object *get_object() {return (Object*)entry.offset();}
-  inline bool is_secondary_index_record() {return (entry._ptr == (uint64_t)-1);}
-#else
-  // Indexonly: entry stores pointer to the oid_array entry
-  inline Object *get_object() {return (Object*)((fat_ptr*)entry._ptr)->offset();}
-  // No support secondary index
-  inline bool is_secondary_index_record() {return false;}
-#endif
+  log_record_t(fat_ptr entry, uint8_t index_id, uint16_t pim_id, uint32_t oid, uint64_t size, bool insert, bool is_pim_index)
+    : entry(entry), is_insert(insert), is_pim_index(is_pim_index), index_id(index_id), pim_id(pim_id), oid(oid), size(size) {}
+  inline Object *get_object() {
+    if (is_pim_index) return (Object*)entry.offset();
+    else return (Object*)((fat_ptr*)entry._ptr)->offset();
+  }
+  inline bool is_secondary_index_record() {
+    if (is_pim_index) return (entry._ptr == (uint64_t)-1);
+    else return false;
+  }
 };
 
 struct write_set_t {
@@ -48,9 +48,9 @@ struct write_set_t {
   uint32_t num_entries;
   log_record_t entries[kMaxEntries];
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(fat_ptr e, uint32_t iid, uint32_t pid, uint32_t oid, uint64_t size, bool insert) {
+  inline void emplace_back(fat_ptr e, uint32_t iid, uint32_t pid, uint32_t oid, uint64_t size, bool insert, bool pim) {
     ALWAYS_ASSERT(num_entries < kMaxEntries);
-    new (&entries[num_entries]) log_record_t(e, iid, pid, oid, size, insert);
+    new (&entries[num_entries]) log_record_t(e, iid, pid, oid, size, insert, pim);
     ++num_entries;
   }
   inline uint32_t size() {return num_entries;}
@@ -61,10 +61,15 @@ struct write_set_t {
   inline uint16_t *pim_id_sort() {
     uint16_t i, j;
     uint16_t *pim_ids = (uint16_t*)entries;
-    // compress, loop from begin to end
+    // compress, loop from begin to end; only for valid pim_id
+    j = 0;
     for (i = 0; i < num_entries; ++i) {
-      pim_ids[i] = entries[i].pim_id;
+      if (entries[i].is_pim_index) {
+        pim_ids[j] = entries[i].pim_id;
+        ++j;
+      }
     }
+    num_entries = j;
     // in-place sort
     std::sort(pim_ids, pim_ids + num_entries);
     return pim_ids;

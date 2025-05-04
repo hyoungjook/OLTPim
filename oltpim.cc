@@ -564,9 +564,10 @@ ConcurrentMasstreeIndex::pim_InsertRecordBegin(transaction *t, const uint64_t ke
     oid = oidmgr->alloc_oid(tuple_fid);
     ALWAYS_ASSERT(oid != INVALID_OID);
     oidmgr->oid_put_new(tuple_array, oid, new_head);
-    t->add_to_pim_write_set(
-      fat_ptr{(uint64_t)tuple_array->get(oid)}, // indexonly: store &fat_ptr
-      index_id, tuple_fid, oid, tuple->size, true);
+    t->add_to_write_set(
+      tuple_array->get(oid), // indexonly: store &fat_ptr
+      tuple_fid, oid, tuple->size, true, false
+    );
   }
   // Insert to the index
   auto *req = (oltpim::request_insertonly*)req_;
@@ -720,9 +721,10 @@ end:
       fat_ptr prev_csn = prev_obj->GetCSN();
       if (!(prev_csn.asi_type() == fat_ptr::ASI_XID &&
           XID::from_ptr(prev_csn) == t->xid)) {
-        t->add_to_pim_write_set(
-          fat_ptr{(uint64_t)oa->get(oid)}, // indexonly: store &fat_ptr
-          index_id, table_descriptor->GetTupleFid(), oid, tuple->size, false);
+        t->add_to_write_set(
+          oa->get(oid), // indexonly: store &fat_ptr
+          table_descriptor->GetTupleFid(), oid, tuple->size, false, false
+        );
       }
       co_return {RC_TRUE};
     }

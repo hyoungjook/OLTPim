@@ -205,17 +205,18 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
   volatile_write(xc->state, TXN::TXN_ABRTD);
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     auto &w = pim_write_set[i];
-#if !defined(OLTPIM_OFFLOAD_INDEX_ONLY)
-    if (w.entry._ptr != 0) MM::deallocate(w.entry);
-#else
-    if (!w.is_secondary_index_record()) {
-      Object *obj = w.get_object();
-      obj->SetCSN(NULL_PTR);
-      fat_ptr *entry_ptr = (fat_ptr*)w.entry._ptr;
-      oidmgr->UnlinkTuple(entry_ptr);
-      MM::deallocate(*entry_ptr);
+    if (!w.is_pim_index) {
+      if (w.entry._ptr != 0) MM::deallocate(w.entry);
     }
-#endif
+    else {
+      if (!w.is_secondary_index_record()) {
+        Object *obj = w.get_object();
+        obj->SetCSN(NULL_PTR);
+        fat_ptr *entry_ptr = (fat_ptr*)w.entry._ptr;
+        oidmgr->UnlinkTuple(entry_ptr);
+        MM::deallocate(*entry_ptr);
+      }
+    }
   }
 
   // abort to pim
@@ -245,6 +246,7 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
     auto *reqs = (oltpim::request_finalize*)pim_request_buffer;
     for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
       auto &ws_entry = pim_write_set[i];
+      if (!ws_entry.is_pim_index) continue;
       new (&reqs[i]) oltpim::request_finalize;
       auto &args = reqs[i].args;
       //args.xid = (xid._val) >> 16;
@@ -254,6 +256,7 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
       oltpim::engine::g_engine.push(ws_entry.pim_id, &reqs[i]);
     }
     for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+      if (!pim_write_set[i].is_pim_index) continue;
       while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
         co_await std::suspend_always{};
       }
@@ -294,14 +297,14 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
       uint32_t off = lb->payload_size;
 
       if (!w.is_secondary_index_record()) {
-#if defined(OLTPIM_OFFLOAD_INDEX_ONLY)
-        auto aligned_size = align_up(w.size + sizeof(dlog::log_record));
-        auto size_code = encode_size_aligned(aligned_size);
-        fat_ptr pdest = LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + off, segnum, size_code).to_ptr();
-        object->SetPersistentAddress(pdest);
-        fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
-        object->SetCSN(csn_ptr);
-#endif
+        if (!w.is_pim_index) {
+          auto aligned_size = align_up(w.size + sizeof(dlog::log_record));
+          auto size_code = encode_size_aligned(aligned_size);
+          fat_ptr pdest = LSN::make(log->get_id(), lb_lsn + sizeof(dlog::log_block) + off, segnum, size_code).to_ptr();
+          object->SetPersistentAddress(pdest);
+          fat_ptr csn_ptr = object->GenerateCsnPtr(xc->end);
+          object->SetCSN(csn_ptr);
+        }
         // hack: pack index_id and pim_id to fid
         const uint32_t fid = (w.index_id << 16) | (w.pim_id);
         if (w.is_insert) {
@@ -344,6 +347,7 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
       auto *reqs = (oltpim::request_finalize*)pim_request_buffer;
       for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
         auto &ws_entry = pim_write_set[i];
+        if (!ws_entry.is_pim_index) continue;
         new (&reqs[i]) oltpim::request_finalize;
         auto &args = reqs[i].args;
         //args.xid = (xid._val) >> 16;
@@ -353,6 +357,7 @@ ermia::coro::task<rc_t> transaction::oltpim_commit() {
         oltpim::engine::g_engine.push(ws_entry.pim_id, &reqs[i]);
       }
       for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
+        if (!pim_write_set[i].is_pim_index) continue;
         while (!oltpim::engine::g_engine.is_done(&reqs[i])) {
           co_await std::suspend_always{};
         }
