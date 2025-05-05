@@ -205,7 +205,7 @@ ermia::coro::task<rc_t> transaction::oltpim_abort() {
   volatile_write(xc->state, TXN::TXN_ABRTD);
   for (uint32_t i = 0; i < pim_write_set.size(); ++i) {
     auto &w = pim_write_set[i];
-    if (!w.is_pim_index) {
+    if (w.is_pim_index) {
       if (w.entry._ptr != 0) MM::deallocate(w.entry);
     }
     else {
