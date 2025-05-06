@@ -1157,18 +1157,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order_multiget(ermia::transa
   rc_t rc = rc_t{RC_TRUE};
   ermia::varstr valptr;
 
-  // W.get
-  {
-    const warehouse::key k_w(warehouse_id);
-    tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
-  }
-  TryVerifyRelaxedOltpim(rc);
-  {
-    warehouse::value v_w;
-    Decode(valptr, v_w);
-  }
-
-  // C.get D.get I.get
+  // C.get D.get I.get, W.get
   district::value v_d;
   float i_price[15];
   {
@@ -1181,6 +1170,17 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_new_order_multiget(ermia::transa
     for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
       tbl_item(warehouse_id)->pim_GetRecordBegin(txn, 
         tpcc_key64::item(item::key(itemIDs[ol_number - 1])), &reqs_i_get[ol_number-1]);
+    }
+    {
+      {
+        const warehouse::key k_w(warehouse_id);
+        tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
+      }
+      TryVerifyRelaxedOltpim(rc);
+      {
+        warehouse::value v_w;
+        Decode(valptr, v_w);
+      }
     }
     rc_t _rc = co_await tbl_customer(warehouse_id)->pim_GetRecordEnd(txn, valptr, &req_c_get);
     if (_rc._val != RC_TRUE) rc = _rc;
@@ -1505,20 +1505,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment_multiget(ermia::transact
 
   // W.get,update
   warehouse::value v_w;
-  {
-    const warehouse::key k_w(warehouse_id);
-    ermia::varstr valptr;
-    tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
-    TryVerifyRelaxedOltpim(rc);
-    Decode(valptr, v_w);
-    if (!FLAGS_tpcc_atomic_ytd) {
-      v_w.w_ytd += paymentAmount;
-      rc = tbl_warehouse(warehouse_id)
-          ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w),
-                         Encode(str(arenas[idx], Size(v_w)), v_w));
-      TryCatchOltpim(rc);
-    }
-  }
+  
 
   // C2.scan1
   { // c_callback scope
@@ -1539,7 +1526,7 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment_multiget(ermia::transact
     rc = co_await tbl_customer_name_idx(customerWarehouseID)->pim_ScanEnd(txn, c_callback, NMaxCustomerIdxScanElems);
     TryCatchOltpim(rc);
   }
-  // D.get, (C2.scan2 || C.get)
+  // D.get, (C2.scan2 || C.get), W.get/update
   {
     oltpim::request_get req_d_get, req_c_get;
     tbl_district(warehouse_id)->pim_GetRecordBegin(txn, 
@@ -1549,7 +1536,22 @@ ermia::coro::task<rc_t> tpcc_oltpim_worker::txn_payment_multiget(ermia::transact
       tbl_customer(customerWarehouseID)->pim_GetRecordBegin(txn,
         tpcc_key64::customer(customer::key(customerWarehouseID, customerDistrictID, customerID)), &req_c_get);
     }
-    rc_t _rc = co_await tbl_district(warehouse_id)->pim_GetRecordEnd(txn, d_value, &req_d_get);
+    rc_t _rc;
+    {
+      const warehouse::key k_w(warehouse_id);
+      ermia::varstr valptr;
+      tbl_warehouse(warehouse_id)->GetRecord(txn, _rc, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
+      TryVerifyRelaxedOltpim(_rc);
+      Decode(valptr, v_w);
+      if (!FLAGS_tpcc_atomic_ytd) {
+        v_w.w_ytd += paymentAmount;
+        _rc = tbl_warehouse(warehouse_id)
+            ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w),
+                           Encode(str(arenas[idx], Size(v_w)), v_w));
+        if (_rc._val != RC_TRUE) rc = _rc;
+      }
+    }
+    _rc = co_await tbl_district(warehouse_id)->pim_GetRecordEnd(txn, d_value, &req_d_get);
     ALWAYS_ASSERT(_rc._val == RC_TRUE || _rc.IsAbort());
     if (_rc._val != RC_TRUE) rc = _rc;
     if (byname) {
