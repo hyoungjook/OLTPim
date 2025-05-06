@@ -857,9 +857,7 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
         const size_t sz = Size(v);
         district_total_sz += sz;
         n_districts++;
-#if defined(OLTPIM)
-        TryVerifyStrict(sync_wait_oltpim_coro(tbl_district(w)->pim_InsertRecord(txn, tpcc_key64::district(k), Encode(str(sz), v))));
-#elif defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
+#if defined(NESTED_COROUTINE) || defined(HYBRID_COROUTINE)
         TryVerifyStrict(sync_wait_coro(tbl_district(w)->InsertRecord(txn, Encode(str(Size(k)), k),
                                                   Encode(str(sz), v))));
 #else
