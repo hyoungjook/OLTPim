@@ -3,6 +3,14 @@
 OLTPim is a research OLTP DBMS implemented on the [UPMEM](https://www.upmem.com/) Processing-in-Memory (PIM) system.
 It is implemented by connecting the [OLTPim Engine](https://github.com/hyoungjook/oltpim-engine) with [MosaicDB](https://github.com/sfu-dis/mosaicdb).
 
+The details are on our [VLDB 2025](https://www.vldb.org/pvldb/vol18/p4241-kim.pdf) paper. Please cite if you use our work:
+```
+No Cap, This Memory Slaps: Breaking Through the Memory Wall of Transactional Database Systems with Processing-in-Memory. 
+Hyoungjoo Kim, Yiwei Zhao, Andrew Pavlo, Phillip B. Gibbons 
+PVLDB, 18(11): 4241-4254, July 2025.
+```
+Also check out our [slides](pdfs/slides.pdf) and [poster](pdfs/poster.pdf).
+
 ## Environment Setup
 
 ### Cloning the project
